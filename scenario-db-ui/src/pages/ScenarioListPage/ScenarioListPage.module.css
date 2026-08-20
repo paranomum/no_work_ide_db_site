@@ -1,0 +1,92 @@
+.page {
+  height: calc(100vh - 64px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 30px;
+}
+
+.content {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0 0 2px !important;
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchRow > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.searchRow :global(.ant-btn) {
+  flex: 0 0 auto;
+}
+
+.counter {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.listCard {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.listCard :global(.ant-card-body) {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0;
+}
+
+.virtuoso {
+  min-height: 0;
+  flex: 1;
+}
+
+.empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 12px;
+  }
+
+  .searchRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .searchRow :global(.ant-btn) {
+    width: 100%;
+  }
+}

@@ -1,0 +1,51 @@
+.header {
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.logoButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  color: #1f2937;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.logoIcon {
+  color: #1677ff;
+  font-size: 22px;
+}
+
+.logoText {
+  color: #1f2937;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.actionButton {
+  color: #4b5563 !important;
+}
+
+.actionButton:hover {
+  color: #1677ff !important;
+  background: #f0f7ff !important;
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 0 16px;
+  }
+
+  .logoText {
+    display: none;
+  }
+}

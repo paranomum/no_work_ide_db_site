@@ -1,0 +1,29 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(22, 119, 255, 0.15), transparent 36%),
+    #f5f7fa;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12);
+}
+
+.heading {
+  display: flex;
+  margin-bottom: 28px;
+}
+
+.title {
+  margin: 0 !important;
+}
+
+.alert {
+  margin-bottom: 20px;
+}

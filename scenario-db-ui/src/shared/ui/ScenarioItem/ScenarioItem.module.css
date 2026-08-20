@@ -1,0 +1,85 @@
+.item {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.item:hover {
+  background: #fafcff;
+}
+
+.name {
+  max-width: 100%;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  flex: 0 0 auto;
+}
+
+.scenarioArea {
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.scenarioArea:hover {
+  background: #f0f7ff;
+}
+
+.scenarioArea:hover .name {
+  color: #1677ff;
+}
+
+.scenarioArea:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.scenarioInfo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .item {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .scenarioInfo {
+    max-width: calc(100% - 136px);
+  }
+
+  .actions :global(.ant-btn) {
+    padding-inline: 6px;
+  }
+}
+
+.hiddenConfirmationAnchor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}

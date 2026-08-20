@@ -1,0 +1,187 @@
+.page {
+  min-height: calc(100vh - 64px);
+  padding: 16px;
+}
+
+.content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pageTitle {
+  min-height: 40px;
+}
+
+.title {
+  margin: 0 !important;
+}
+
+.editableValue {
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.editableValue:hover {
+  background: #f0f7ff;
+  border-color: #91caff;
+}
+
+.nameValue {
+  font-size: 15px;
+}
+
+.tagSelect {
+  width: 100%;
+}
+
+.relatedList {
+  height: 216px;
+  overflow: hidden;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.variableValue {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  background: #f6f8fa;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.variableValue:hover {
+  background: #eef6ff;
+  border-color: #91caff;
+}
+
+.emptyVariableValue {
+  color: #8c8c8c;
+  font-style: italic;
+}
+
+.stepsValue {
+  margin: 0 !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scenarioHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
+.scenarioTitleRow,
+.scenarioTagsRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scenarioTagsContent {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.scenarioTitleContent {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scenarioName {
+  min-width: 0;
+  margin: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.scenarioName:hover {
+  color: #1677ff;
+}
+
+.scenarioNameInput {
+  min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.scenarioNameButton {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: block;
+  padding: 4px 8px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.scenarioNameButton:hover {
+  background: #f0f7ff;
+  border-color: #91caff;
+}
+
+.scenarioNameButton:hover .scenarioName {
+  color: #1677ff;
+}
+
+.scenarioNameButton:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.scenarioTagsContent {
+  padding-left: 48px;
+}
+
+.tagsList {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.scenarioTag {
+  margin-inline-end: 0 !important;
+  padding: 4px 10px;
+  font-size: 14px;
+  line-height: 22px;
+  border-radius: 999px;
+}
+
+.tagSelect {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 12px;
+  }
+
+  .relatedList {
+    height: 216px;
+  }
+}
