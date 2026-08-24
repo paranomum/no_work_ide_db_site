@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: test-recorder-back
+
+  datasource:
+    url: jdbc:sqlite:./data/test_recorder_scenario_db.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.community.dialect.SQLiteDialect
+        format_sql: true
+    show-sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8080
