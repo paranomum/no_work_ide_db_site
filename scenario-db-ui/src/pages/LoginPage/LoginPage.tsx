@@ -1,5 +1,3 @@
-import { AppInput } from '../../shared/ui/AppInput/AppInput';
-import { AppInputPassword } from '../../shared/ui/AppInput/AppInputPassword';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -7,21 +5,24 @@ import {
   Button,
   Card,
   Form,
-  Input,
   Space,
   Typography,
   message,
 } from 'antd';
+import axios from 'axios';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
-import type { LoginRequest } from '../../shared/types/auth';
+import { http } from '../../shared/api/http';
+import type { AuthUser, LoginRequest } from '../../shared/types/auth';
+import { AppInput } from '../../shared/ui/AppInput/AppInput';
+import { AppInputPassword } from '../../shared/ui/AppInput/AppInputPassword';
 import styles from './LoginPage.module.css';
 
 const loginSchema = z.object({
-  login: z.string().trim().min(1, 'Введите логин'),
+  username: z.string().trim().min(1, 'Введите логин'),
   password: z.string().min(1, 'Введите пароль'),
 });
 
@@ -39,32 +40,33 @@ export function LoginPage() {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      login: '',
+      username: '',
       password: '',
     },
   });
 
-  const onSubmit = async (values: LoginRequest) => {
+  const onSubmit = async (values: LoginFormValues) => {
     setErrorText(null);
     setIsSubmitting(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const request: LoginRequest = {
+        username: values.username,
+        password: values.password,
+      };
 
-      localStorage.setItem('scenario-db.access-token', 'development-token');
-      localStorage.setItem(
-        'scenario-db.user',
-        JSON.stringify({
-          id: 'local-user',
-          login: values.login,
-          name: values.login,
-        }),
-      );
+      const { data } = await http.post<AuthUser>('/auth/login', request);
+
+      localStorage.setItem('scenario-db.user', JSON.stringify(data));
 
       message.success('Вход выполнен');
       navigate('/scenarios', { replace: true });
-    } catch {
-      setErrorText('Не удалось выполнить вход. Повторите попытку.');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        setErrorText('Неверный логин или пароль');
+      } else {
+        setErrorText('Не удалось выполнить вход. Повторите попытку.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -99,21 +101,21 @@ export function LoginPage() {
         >
           <Form.Item
             label="Логин"
-            validateStatus={errors.login ? 'error' : ''}
-            help={errors.login?.message}
+            validateStatus={errors.username ? 'error' : ''}
+            help={errors.username?.message}
           >
             <Controller
-              name="login"
+              name="username"
               control={control}
               render={({ field }) => (
                 <AppInput
-  {...field}
-  autoComplete="username"
-  autoFocus
-  size="large"
-  prefix={<UserOutlined />}
-  placeholder="Введите логин"
-/>
+                  {...field}
+                  autoComplete="username"
+                  autoFocus
+                  size="large"
+                  prefix={<UserOutlined />}
+                  placeholder="Введите логин"
+                />
               )}
             />
           </Form.Item>
@@ -128,17 +130,12 @@ export function LoginPage() {
               control={control}
               render={({ field }) => (
                 <AppInputPassword
-  {...field}
-  autoComplete="current-password"
-  size="large"
-  prefix={<LockOutlined />}
-  placeholder="Введите пароль"
-  onKeyDown={(event) => {
-    if (event.key === 'Enter') {
-      handleSubmit(onSubmit)();
-    }
-  }}
-/>
+                  {...field}
+                  autoComplete="current-password"
+                  size="large"
+                  prefix={<LockOutlined />}
+                  placeholder="Введите пароль"
+                />
               )}
             />
           </Form.Item>

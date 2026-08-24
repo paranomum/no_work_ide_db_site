@@ -3,14 +3,17 @@ import axios from 'axios';
 export const http = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '/api',
   timeout: 10_000,
+  withCredentials: true, // отправлять сессионную cookie на бек
 });
 
-http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('scenario-db.access-token');
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
+// Если сессия истекла — бек вернёт 401, кидаем на /login
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('scenario-db.user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  },
+);

@@ -103,13 +103,6 @@ public class UserController {
 	}
 
 	@GetMapping("/me")
-	public UserResponse getCurrentUser(
-			@AuthenticationPrincipal CustomUserDetails currentUser
-	) {
-		return userService.getCurrentUser(currentUser.getUserId());
-	}
-
-	@GetMapping("/me")
 	public UserResponse getMe(
 			@AuthenticationPrincipal CustomUserDetails currentUser
 	) {
