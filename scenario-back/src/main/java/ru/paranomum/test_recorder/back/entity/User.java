@@ -1,6 +1,8 @@
 package ru.paranomum.test_recorder.back.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -21,9 +23,11 @@ public class User {
 	@Column(name = "password_hash", nullable = false)
 	private String passwordHash;
 
+	@CreationTimestamp
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 
+	@CreationTimestamp
 	@Column(name = "updated_at", nullable = false)
 	private LocalDateTime updatedAt;
 
