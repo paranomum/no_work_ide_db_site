@@ -1,0 +1,28 @@
+name: test-recorder
+
+services:
+  backend:
+    build:
+      context: ./scenario-back
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: jdbc:sqlite:/data/test_recorder_scenario_db.db
+      SESSION_COOKIE_SECURE: "false"
+    volumes:
+      - scenario-db-data:/data
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./scenario-db-ui
+      dockerfile: Dockerfile
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  scenario-db-data:

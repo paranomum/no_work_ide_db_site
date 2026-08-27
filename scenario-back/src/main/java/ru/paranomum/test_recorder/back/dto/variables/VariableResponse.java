@@ -6,8 +6,6 @@ public record VariableResponse(
 		Long id,
 		String name,
 		String description,
-		boolean isUserVariable,
-		LocalDateTime createdAt,
-		LocalDateTime updatedAt
+		boolean isUserVariable
 ) {
 }

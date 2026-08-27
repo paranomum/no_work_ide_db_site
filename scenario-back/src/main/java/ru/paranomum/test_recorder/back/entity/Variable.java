@@ -1,10 +1,14 @@
 package ru.paranomum.test_recorder.back.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Entity
+@Getter
+@Setter
 @Table(name = "variables")
 public class Variable {
 
@@ -21,13 +25,7 @@ public class Variable {
 	@Column(name = "is_user_variable", nullable = false)
 	private boolean isUserVariable;
 
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private LocalDateTime createdAt;
-
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
-
-	protected Variable() {
+	public Variable() {
 	}
 
 	public Variable(
@@ -56,14 +54,6 @@ public class Variable {
 		return isUserVariable;
 	}
 
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
-	}
-
 	public void update(
 			String name,
 			String description,
@@ -72,6 +62,5 @@ public class Variable {
 		this.name = name;
 		this.description = description;
 		this.isUserVariable = isUserVariable;
-		this.updatedAt = LocalDateTime.now();
 	}
 }

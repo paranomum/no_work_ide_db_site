@@ -1,0 +1,14 @@
+.page {
+  min-height: 100%;
+  padding: 32px;
+}
+
+.content {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.pageTitle {
+  margin-bottom: 24px;
+}

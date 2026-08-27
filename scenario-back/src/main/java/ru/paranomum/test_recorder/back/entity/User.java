@@ -23,14 +23,6 @@ public class User {
 	@Column(name = "password_hash", nullable = false)
 	private String passwordHash;
 
-	@CreationTimestamp
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private LocalDateTime createdAt;
-
-	@CreationTimestamp
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
-
 	protected User() {
 	}
 
@@ -58,14 +50,6 @@ public class User {
 
 	public String getPasswordHash() {
 		return passwordHash;
-	}
-
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
 	}
 
 	public void update(String name, String username) {

@@ -7,23 +7,56 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
-import ru.paranomum.test_recorder.back.dto.scenarios.*;
-import ru.paranomum.test_recorder.back.security.CustomUserDetails;
-import ru.paranomum.test_recorder.back.service.ScenarioService;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioBackendRequestResponse;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioBackendRequestsRequest;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioCustomMethodResponse;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioCustomMethodsRequest;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioDownloadResult;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioRequest;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioResponse;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioTagsRequest;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioVariableResponse;
+import ru.paranomum.test_recorder.back.dto.scenarios.ScenarioVariablesRequest;
+import ru.paranomum.test_recorder.back.dto.scenarios.imports.ScenarioImportRequest;
 import ru.paranomum.test_recorder.back.dto.tags.TagResponse;
+import ru.paranomum.test_recorder.back.security.CustomUserDetails;
+import ru.paranomum.test_recorder.back.service.ScenarioExportService;
+import ru.paranomum.test_recorder.back.service.ScenarioImportService;
+import ru.paranomum.test_recorder.back.service.ScenarioService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @RestController
 @RequestMapping("/api/scenarios")
 public class ScenarioController {
 
 	private final ScenarioService scenarioService;
+	private final ScenarioExportService scenarioExportService;
+	private final ScenarioImportService scenarioImportService;
 
-	public ScenarioController(ScenarioService scenarioService) {
+	public ScenarioController(
+			ScenarioService scenarioService,
+			ScenarioExportService scenarioExportService,
+			ScenarioImportService scenarioImportService
+	) {
 		this.scenarioService = scenarioService;
+		this.scenarioExportService = scenarioExportService;
+		this.scenarioImportService = scenarioImportService;
 	}
 
 	@GetMapping
@@ -45,6 +78,14 @@ public class ScenarioController {
 			@Valid @RequestBody ScenarioRequest request
 	) {
 		return scenarioService.create(request);
+	}
+
+	@PostMapping("/import")
+	@ResponseStatus(HttpStatus.CREATED)
+	public ScenarioResponse importScenario(
+			@Valid @RequestBody ScenarioImportRequest request
+	) {
+		return scenarioImportService.importScenario(request);
 	}
 
 	@PutMapping("/{id}")
@@ -111,7 +152,10 @@ public class ScenarioController {
 			@PathVariable Long scenarioId,
 			@Valid @RequestBody ScenarioBackendRequestsRequest request
 	) {
-		return scenarioService.replaceBackendRequests(scenarioId, request);
+		return scenarioService.replaceBackendRequests(
+				scenarioId,
+				request
+		);
 	}
 
 	@GetMapping("/{scenarioId}/custom-methods")
@@ -126,7 +170,10 @@ public class ScenarioController {
 			@PathVariable Long scenarioId,
 			@Valid @RequestBody ScenarioCustomMethodsRequest request
 	) {
-		return scenarioService.replaceCustomMethods(scenarioId, request);
+		return scenarioService.replaceCustomMethods(
+				scenarioId,
+				request
+		);
 	}
 
 	@PutMapping("/{scenarioId}/tags")
@@ -137,16 +184,60 @@ public class ScenarioController {
 		return scenarioService.replaceTags(scenarioId, request);
 	}
 
-	@GetMapping("/{scenarioId}/download")
-	public ResponseEntity<ByteArrayResource> download(
+	@GetMapping("/{scenarioId}/download-original")
+	public ResponseEntity<ByteArrayResource> downloadOriginal(
 			@PathVariable Long scenarioId,
 			@AuthenticationPrincipal CustomUserDetails currentUser
 	) {
-		ScenarioDownloadResult result = scenarioService.downloadScenario(
-				scenarioId,
-				currentUser.getUserId()
-		);
+		ScenarioDownloadResult result =
+				scenarioExportService.downloadOriginal(
+						scenarioId,
+						currentUser.getUserId()
+				);
 
+		return jsonDownloadResponse(result);
+	}
+
+	@GetMapping("/{scenarioId}/download-full")
+	public ResponseEntity<ByteArrayResource> downloadFull(
+			@PathVariable Long scenarioId,
+			@AuthenticationPrincipal CustomUserDetails currentUser
+	) {
+		ScenarioDownloadResult result =
+				scenarioExportService.downloadFull(
+						scenarioId,
+						currentUser.getUserId()
+				);
+
+		return jsonDownloadResponse(result);
+	}
+
+	@GetMapping("/{scenarioId}/download-zip")
+	public ResponseEntity<ByteArrayResource> downloadZip(
+			@PathVariable Long scenarioId,
+			@AuthenticationPrincipal CustomUserDetails currentUser
+	) {
+		List<ScenarioDownloadResult> entries =
+				scenarioExportService.downloadZipEntries(
+						scenarioId,
+						currentUser.getUserId()
+				);
+
+		byte[] zipBytes = createZip(entries);
+
+		return ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType("application/zip"))
+				.contentLength(zipBytes.length)
+				.header(
+						HttpHeaders.CONTENT_DISPOSITION,
+						"attachment; filename=\"scenario-" + scenarioId + ".zip\""
+				)
+				.body(new ByteArrayResource(zipBytes));
+	}
+
+	private ResponseEntity<ByteArrayResource> jsonDownloadResponse(
+			ScenarioDownloadResult result
+	) {
 		byte[] bytes = result.content().getBytes(StandardCharsets.UTF_8);
 
 		return ResponseEntity.ok()
@@ -157,5 +248,40 @@ public class ScenarioController {
 						"attachment; filename=\"" + result.fileName() + "\""
 				)
 				.body(new ByteArrayResource(bytes));
+	}
+
+	private byte[] createZip(
+			List<ScenarioDownloadResult> entries
+	) {
+		try (
+				ByteArrayOutputStream outputStream =
+						new ByteArrayOutputStream();
+				ZipOutputStream zipOutputStream =
+						new ZipOutputStream(
+								outputStream,
+								StandardCharsets.UTF_8
+						)
+		) {
+			for (ScenarioDownloadResult entry : entries) {
+				ZipEntry zipEntry = new ZipEntry(entry.fileName());
+
+				zipOutputStream.putNextEntry(zipEntry);
+
+				zipOutputStream.write(
+						entry.content().getBytes(StandardCharsets.UTF_8)
+				);
+
+				zipOutputStream.closeEntry();
+			}
+
+			zipOutputStream.finish();
+
+			return outputStream.toByteArray();
+		} catch (IOException exception) {
+			throw new IllegalStateException(
+					"Не удалось сформировать ZIP-архив сценариев",
+					exception
+			);
+		}
 	}
 }

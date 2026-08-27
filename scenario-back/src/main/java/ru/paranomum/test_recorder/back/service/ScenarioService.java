@@ -172,8 +172,47 @@ public class ScenarioService {
 					);
 		}
 
+		if (scenarios.isEmpty()) {
+			return List.of();
+		}
+
+		List<Long> scenarioIds = scenarios.stream()
+				.map(Scenario::getId)
+				.toList();
+
+		List<ScenarioTag> scenarioTags =
+				scenarioTagRepository.findAllByScenarioIdIn(scenarioIds);
+
+		Set<Long> tagIdsFromLinks = scenarioTags.stream()
+				.map(ScenarioTag::getTagId)
+				.collect(Collectors.toSet());
+
+		Map<Long, TagResponse> tagsById = tagRepository
+				.findAllById(tagIdsFromLinks)
+				.stream()
+				.map(this::toTagResponse)
+				.collect(Collectors.toMap(TagResponse::id, Function.identity()));
+
+		Map<Long, List<TagResponse>> tagsByScenarioId = scenarioTags.stream()
+				.collect(Collectors.groupingBy(
+						ScenarioTag::getScenarioId,
+						Collectors.mapping(
+								scenarioTag -> tagsById.get(scenarioTag.getTagId()),
+								Collectors.filtering(
+										java.util.Objects::nonNull,
+										Collectors.toList()
+								)
+						)
+				));
+
 		return scenarios.stream()
-				.map(this::toResponse)
+				.map(scenario -> toResponse(
+						scenario,
+						tagsByScenarioId.getOrDefault(
+								scenario.getId(),
+								List.of()
+						)
+				))
 				.toList();
 	}
 
@@ -349,6 +388,7 @@ public class ScenarioService {
 							variable.getName(),
 							variable.getDescription(),
 							variable.isUserVariable(),
+							link.getDefaultValue(),
 							link.getPosition()
 					);
 				})
@@ -371,6 +411,7 @@ public class ScenarioService {
 				.map(item -> new ScenarioVariable(
 						scenarioId,
 						item.variableId(),
+						item.defaultValue(),
 						item.position()
 				))
 				.toList();
@@ -539,9 +580,7 @@ public class ScenarioService {
 		return new TagResponse(
 				tag.getId(),
 				tag.getName(),
-				tag.getColor(),
-				tag.getCreatedAt(),
-				tag.getUpdatedAt()
+				tag.getColor()
 		);
 	}
 
@@ -592,13 +631,19 @@ public class ScenarioService {
 	}
 
 	private ScenarioResponse toResponse(Scenario scenario) {
+		return toResponse(scenario, getTags(scenario.getId()));
+	}
+
+	private ScenarioResponse toResponse(
+			Scenario scenario,
+			List<TagResponse> tags
+	) {
 		return new ScenarioResponse(
 				scenario.getId(),
 				scenario.getName(),
 				scenario.getDescription(),
 				scenario.getScenarioPayloadJson(),
-				scenario.getCreatedAt(),
-				scenario.getUpdatedAt()
+				tags
 		);
 	}
 

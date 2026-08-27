@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: 8080
   servlet:
     session:
       timeout: 3h
@@ -13,7 +13,7 @@ spring:
     name: test-recorder-back
 
   datasource:
-    url: jdbc:sqlite:./data/test_recorder_scenario_db.db
+    url: ${DATABASE_URL:jdbc:sqlite:./data/test_recorder_scenario_db.db}
     driver-class-name: org.sqlite.JDBC
 
   jpa:

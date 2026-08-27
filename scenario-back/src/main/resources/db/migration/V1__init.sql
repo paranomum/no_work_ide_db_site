@@ -21,9 +21,6 @@ CREATE TABLE users (
     username      TEXT NOT NULL COLLATE NOCASE,
     password_hash TEXT NOT NULL,
 
-    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT uq_users_username UNIQUE (username),
 
     CONSTRAINT ck_users_name_not_blank
@@ -61,9 +58,6 @@ CREATE TABLE variables (
     description      TEXT,
     is_user_variable INTEGER NOT NULL DEFAULT 0,
 
-    created_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT uq_variables_name UNIQUE (name),
 
     CONSTRAINT ck_variables_name_not_blank
@@ -91,9 +85,6 @@ CREATE TABLE user_variables (
     user_id     INTEGER NOT NULL,
     variable_id INTEGER NOT NULL,
     value       TEXT NOT NULL,
-
-    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (user_id, variable_id),
 
@@ -128,9 +119,6 @@ CREATE TABLE tags (
     id         INTEGER PRIMARY KEY,
     name       TEXT NOT NULL COLLATE NOCASE,
     color      TEXT NOT NULL,
-
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT uq_tags_name UNIQUE (name),
 
@@ -180,11 +168,6 @@ CREATE TABLE backend_requests (
     form_data_json           TEXT NOT NULL DEFAULT '[]',
     field_overrides_json     TEXT NOT NULL DEFAULT '[]',
     response_extractors_json TEXT NOT NULL DEFAULT '[]',
-
-    captured_at              TEXT,
-
-    created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT uq_backend_requests_name UNIQUE (name),
 
@@ -267,9 +250,6 @@ CREATE TABLE scenarios (
 
     scenario_payload_json TEXT NOT NULL,
 
-    created_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT uq_scenarios_name UNIQUE (name),
 
     CONSTRAINT ck_scenarios_name_not_blank
@@ -305,8 +285,6 @@ CREATE INDEX ix_scenarios_name
 CREATE TABLE scenario_backend_requests (
     scenario_id        INTEGER NOT NULL,
     backend_request_id INTEGER NOT NULL,
-
-    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (scenario_id, backend_request_id),
 
@@ -347,9 +325,6 @@ CREATE TABLE scenario_variables (
     default_value TEXT NOT NULL DEFAULT '',
     position      INTEGER NOT NULL,
 
-    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     PRIMARY KEY (scenario_id, variable_id),
 
     CONSTRAINT uq_scenario_variables_position
@@ -377,8 +352,6 @@ CREATE INDEX ix_scenario_variables_variable_id
 CREATE TABLE scenario_tags (
     scenario_id INTEGER NOT NULL,
     tag_id      INTEGER NOT NULL,
-
-    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (scenario_id, tag_id),
 
@@ -413,8 +386,6 @@ CREATE INDEX ix_scenario_tags_tag_id
 CREATE TABLE scenario_custom_methods (
     source_scenario_id INTEGER NOT NULL,
     target_scenario_id INTEGER NOT NULL,
-
-    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (source_scenario_id, target_scenario_id),
 

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminPage } from '../pages/AdminPage/AdminPage';
 import { LoginPage } from '../pages/LoginPage/LoginPage';
 import { ProfilePage } from '../pages/ProfilePage/ProfilePage';
+import { ScenarioCreatePage } from '../pages/ScenarioCreatePage/ScenarioCreatePage';
 import { ScenarioListPage } from '../pages/ScenarioListPage/ScenarioListPage';
 import { ScenarioPage } from '../pages/ScenarioPage/ScenarioPage';
 import { PrivateLayout } from './PrivateLayout';
@@ -13,8 +14,15 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<PrivateLayout />}>
-        <Route path="/scenarios/:scenarioId" element={<ScenarioPage />} />
-<Route path="/scenarios" element={<ScenarioListPage />} />
+        <Route
+          path="/scenarios/new"
+          element={<ScenarioCreatePage />}
+        />
+        <Route
+          path="/scenarios/:scenarioId"
+          element={<ScenarioPage />}
+        />
+        <Route path="/scenarios" element={<ScenarioListPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>

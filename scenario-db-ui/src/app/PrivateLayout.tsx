@@ -1,24 +1,44 @@
-import { Navigate, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Layout, Spin } from 'antd';
+import { Layout } from 'antd';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
+
 import { AppHeader } from '../shared/ui/AppHeader/AppHeader';
-import { http } from '../shared/api/http';
 
 const { Content } = Layout;
 
-export function PrivateLayout() {
-  const { isLoading, isError } = useQuery({
-    queryKey: ['me'],
-    queryFn: () => http.get('/users/me'),
-    retry: false,
-  });
+function hasSavedUser(): boolean {
+  const savedUser = localStorage.getItem('scenario-db.user');
 
-  if (isLoading) return <Spin fullscreen />;
-  if (isError) return <Navigate to="/login" replace />;
+  if (!savedUser) {
+    return false;
+  }
+
+  try {
+    const user = JSON.parse(savedUser);
+
+    return Boolean(user?.id && user?.username);
+  } catch {
+    localStorage.removeItem('scenario-db.user');
+    return false;
+  }
+}
+
+export function PrivateLayout() {
+  const location = useLocation();
+
+  if (!hasSavedUser()) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname }}
+      />
+    );
+  }
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <AppHeader />
+
       <Content>
         <Outlet />
       </Content>

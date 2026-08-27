@@ -5,6 +5,7 @@ public record ScenarioVariableResponse(
 		String name,
 		String description,
 		boolean isUserVariable,
+		String defaultValue,
 		Integer position
 ) {
 }

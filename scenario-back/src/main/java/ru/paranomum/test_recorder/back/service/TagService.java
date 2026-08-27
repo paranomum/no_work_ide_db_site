@@ -52,6 +52,7 @@ public class TagService {
 			Tag tag = tagRepository.save(
 					new Tag(name, DEFAULT_TAG_COLOR)
 			);
+
 			return toResponse(tag);
 		} catch (DataIntegrityViolationException exception) {
 			throw new TagAlreadyExistsException(name);
@@ -63,14 +64,19 @@ public class TagService {
 		Tag tag = findById(id);
 		String name = normalizeName(request.name());
 
-		boolean changed = !tag.getName().equalsIgnoreCase(name);
+		boolean nameChanged = !tag.getName().equalsIgnoreCase(name);
 
-		if (changed && tagRepository.existsByNameIgnoreCase(name)) {
+		if (nameChanged && tagRepository.existsByNameIgnoreCase(name)) {
 			throw new TagAlreadyExistsException(name);
 		}
 
+		String color = request.color() == null
+				? tag.getColor()
+				: request.color();
+
 		try {
-			tag.updateName(name);
+			tag.update(name, color);
+
 			return toResponse(tag);
 		} catch (DataIntegrityViolationException exception) {
 			throw new TagAlreadyExistsException(name);
@@ -97,9 +103,7 @@ public class TagService {
 		return new TagResponse(
 				tag.getId(),
 				tag.getName(),
-				tag.getColor(),
-				tag.getCreatedAt(),
-				tag.getUpdatedAt()
+				tag.getColor()
 		);
 	}
 }

@@ -18,12 +18,6 @@ public class Tag {
 	@Column(nullable = false)
 	private String color;
 
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private LocalDateTime createdAt;
-
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
-
 	protected Tag() {
 	}
 
@@ -44,16 +38,8 @@ public class Tag {
 		return color;
 	}
 
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
-	}
-
-	public void updateName(String name) {
+	public void update(String name, String color) {
 		this.name = name;
-		this.updatedAt = LocalDateTime.now();
+		this.color = color;
 	}
 }

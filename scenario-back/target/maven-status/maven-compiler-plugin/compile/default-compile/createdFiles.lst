@@ -1,6 +1,3 @@
 ru/paranomum/test_recorder/back/repository/UserRepository.class
-ru/paranomum/test_recorder/back/entity/TagEntity.class
 ru/paranomum/test_recorder/back/repository/TagRepository.class
-ru/paranomum/test_recorder/back/entity/VariableEntity.class
-ru/paranomum/test_recorder/back/entity/UserEntity.class
 ru/paranomum/test_recorder/back/repository/VariableRepository.class

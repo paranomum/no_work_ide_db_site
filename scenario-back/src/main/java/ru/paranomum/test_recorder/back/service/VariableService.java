@@ -114,9 +114,7 @@ public class VariableService {
 				variable.getId(),
 				variable.getName(),
 				variable.getDescription(),
-				variable.isUserVariable(),
-				variable.getCreatedAt(),
-				variable.getUpdatedAt()
+				variable.isUserVariable()
 		);
 	}
 }

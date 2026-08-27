@@ -19,3 +19,21 @@ body {
   color: #1f2937;
   background: #f5f7fa;
 }
+
+.backendDiffLineDifferent {
+  display: block;
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.backendDiffLineOnlyLeft {
+  display: block;
+  background: #fff7e6;
+  color: #ad6800;
+}
+
+.backendDiffLineOnlyRight {
+  display: block;
+  background: #f6ffed;
+  color: #389e0d;
+}

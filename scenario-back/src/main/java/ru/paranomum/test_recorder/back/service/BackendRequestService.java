@@ -3,20 +3,42 @@ package ru.paranomum.test_recorder.back.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.paranomum.test_recorder.back.dto.backendrequests.BackendRequestRequest;
 import ru.paranomum.test_recorder.back.dto.backendrequests.BackendRequestResponse;
+import ru.paranomum.test_recorder.back.dto.backendrequests.merge.BackendRequestMergeRequest;
+import ru.paranomum.test_recorder.back.dto.backendrequests.merge.BackendRequestUsageResponse;
+import ru.paranomum.test_recorder.back.dto.backendrequests.merge.BackendRequestUsageScenarioResponse;
+import ru.paranomum.test_recorder.back.dto.backendrequests.merge.ScenarioVariableMigrationRequest;
+import ru.paranomum.test_recorder.back.dto.backendrequests.merge.ScenarioVariableMigrationValueRequest;
 import ru.paranomum.test_recorder.back.entity.BackendRequest;
+import ru.paranomum.test_recorder.back.entity.Scenario;
+import ru.paranomum.test_recorder.back.entity.ScenarioBackendRequest;
+import ru.paranomum.test_recorder.back.entity.ScenarioVariable;
+import ru.paranomum.test_recorder.back.entity.ScenarioVariableId;
+import ru.paranomum.test_recorder.back.entity.Variable;
 import ru.paranomum.test_recorder.back.exception.BackendRequestAlreadyExistsException;
 import ru.paranomum.test_recorder.back.exception.BackendRequestJsonInvalidException;
+import ru.paranomum.test_recorder.back.exception.VariableAlreadyExistsException;
 import ru.paranomum.test_recorder.back.repository.BackendRequestRepository;
+import ru.paranomum.test_recorder.back.repository.ScenarioBackendRequestRepository;
+import ru.paranomum.test_recorder.back.repository.ScenarioRepository;
+import ru.paranomum.test_recorder.back.repository.ScenarioVariableRepository;
+import ru.paranomum.test_recorder.back.repository.VariableRepository;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -27,23 +49,37 @@ public class BackendRequestService {
 	private static final String DEFAULT_BODY_TYPE = "NONE";
 
 	private final BackendRequestRepository backendRequestRepository;
+	private final ScenarioBackendRequestRepository scenarioBackendRequestRepository;
+	private final ScenarioRepository scenarioRepository;
+	private final VariableRepository variableRepository;
+	private final ScenarioVariableRepository scenarioVariableRepository;
 	private final ObjectMapper objectMapper;
 
 	public BackendRequestService(
 			BackendRequestRepository backendRequestRepository,
+			ScenarioBackendRequestRepository scenarioBackendRequestRepository,
+			ScenarioRepository scenarioRepository,
+			VariableRepository variableRepository,
+			ScenarioVariableRepository scenarioVariableRepository,
 			ObjectMapper objectMapper
 	) {
 		this.backendRequestRepository = backendRequestRepository;
+		this.scenarioBackendRequestRepository =
+				scenarioBackendRequestRepository;
+		this.scenarioRepository = scenarioRepository;
+		this.variableRepository = variableRepository;
+		this.scenarioVariableRepository = scenarioVariableRepository;
 		this.objectMapper = objectMapper;
 	}
 
 	public List<BackendRequestResponse> getAll(String query) {
-		List<BackendRequest> backendRequests = query == null || query.isBlank()
-				? backendRequestRepository.findAllByOrderByNameAsc()
-				: backendRequestRepository
-				.findAllByNameContainingIgnoreCaseOrderByNameAsc(
-						query.trim()
-				);
+		List<BackendRequest> backendRequests =
+				query == null || query.isBlank()
+						? backendRequestRepository.findAllByOrderByNameAsc()
+						: backendRequestRepository
+						.findAllByNameContainingIgnoreCaseOrderByNameAsc(
+								query.trim()
+						);
 
 		return backendRequests.stream()
 				.map(this::toResponse)
@@ -52,6 +88,41 @@ public class BackendRequestService {
 
 	public BackendRequestResponse getById(Long id) {
 		return toResponse(findById(id));
+	}
+
+	public BackendRequestUsageResponse getUsage(Long backendRequestId) {
+		BackendRequest backendRequest = findById(backendRequestId);
+
+		List<Long> scenarioIds = scenarioBackendRequestRepository
+				.findAllByBackendRequestId(backendRequestId)
+				.stream()
+				.map(ScenarioBackendRequest::getScenarioId)
+				.distinct()
+				.toList();
+
+		Map<Long, String> scenarioNamesById = scenarioRepository
+				.findAllById(scenarioIds)
+				.stream()
+				.collect(Collectors.toMap(
+						Scenario::getId,
+						Scenario::getName
+				));
+
+		List<BackendRequestUsageScenarioResponse> scenarios =
+				scenarioIds.stream()
+						.map(scenarioId ->
+								new BackendRequestUsageScenarioResponse(
+										scenarioId,
+										scenarioNamesById.get(scenarioId)
+								)
+						)
+						.toList();
+
+		return new BackendRequestUsageResponse(
+				backendRequest.getId(),
+				backendRequest.getName(),
+				scenarios
+		);
 	}
 
 	@Transactional
@@ -75,8 +146,7 @@ public class BackendRequestService {
 							data.bodyType(),
 							data.formDataJson(),
 							data.fieldOverridesJson(),
-							data.responseExtractorsJson(),
-							data.capturedAt()
+							data.responseExtractorsJson()
 					)
 			);
 
@@ -103,25 +173,57 @@ public class BackendRequestService {
 		}
 
 		try {
-			backendRequest.update(
-					data.name(),
-					data.url(),
-					data.httpMethod(),
-					data.requestBody(),
-					data.requestHeadersJson(),
-					data.capturedResponseBody(),
-					data.token(),
-					data.bodyType(),
-					data.formDataJson(),
-					data.fieldOverridesJson(),
-					data.responseExtractorsJson(),
-					data.capturedAt()
-			);
-
+			updateBackendRequest(backendRequest, data);
 			return toResponse(backendRequest);
 		} catch (DataIntegrityViolationException exception) {
 			throw new BackendRequestAlreadyExistsException(data.name());
 		}
+	}
+
+	@Transactional
+	public BackendRequestResponse mergeForScenarioImport(
+			Long backendRequestId,
+			BackendRequestMergeRequest request
+	) {
+		return merge(backendRequestId, request);
+	}
+
+
+	@Transactional
+	public BackendRequestResponse merge(
+			Long backendRequestId,
+			BackendRequestMergeRequest request
+	) {
+		BackendRequest backendRequest = findById(backendRequestId);
+		BackendRequestData data = prepareData(request.backendRequest());
+
+		String previousName = backendRequest.getName();
+		boolean nameChanged = !previousName.equalsIgnoreCase(data.name());
+
+		validateMergeName(backendRequest, data.name());
+
+		Set<Long> linkedScenarioIds = scenarioBackendRequestRepository
+				.findAllByBackendRequestId(backendRequestId)
+				.stream()
+				.map(ScenarioBackendRequest::getScenarioId)
+				.collect(Collectors.toSet());
+
+		if (nameChanged) {
+			renameBackendMethodInLinkedScenarioPayloads(
+					linkedScenarioIds,
+					previousName,
+					data.name()
+			);
+		}
+
+		validateAndApplyVariableMigrations(
+				request.scenarioVariableMigrations(),
+				linkedScenarioIds
+		);
+
+		updateBackendRequest(backendRequest, data);
+
+		return toResponse(backendRequest);
 	}
 
 	@Transactional
@@ -138,6 +240,306 @@ public class BackendRequestService {
 				.filter(Objects::nonNull)
 				.map(this::toResponse)
 				.toList();
+	}
+
+	private void renameBackendMethodInLinkedScenarioPayloads(
+			Set<Long> scenarioIds,
+			String previousName,
+			String updatedName
+	) {
+		if (scenarioIds.isEmpty()) {
+			return;
+		}
+
+		List<Scenario> scenarios = scenarioRepository.findAllById(
+				scenarioIds
+		);
+
+		for (Scenario scenario : scenarios) {
+			ObjectNode root = parseScenarioPayload(
+					scenario.getScenarioPayloadJson()
+			);
+
+			boolean changed = replaceBackendMethodActionReferences(
+					root,
+					previousName,
+					updatedName
+			);
+
+			changed = renameScenarioOverrideKey(
+					root,
+					previousName,
+					updatedName
+			) || changed;
+
+			if (changed) {
+				scenario.update(
+						scenario.getName(),
+						scenario.getDescription(),
+						serializeScenarioPayload(root)
+				);
+			}
+		}
+	}
+
+	private boolean replaceBackendMethodActionReferences(
+			ObjectNode root,
+			String previousName,
+			String updatedName
+	) {
+		JsonNode actionsNode = root.get("actions");
+
+		if (actionsNode == null || !actionsNode.isArray()) {
+			return false;
+		}
+
+		boolean changed = false;
+
+		for (JsonNode actionNode : actionsNode) {
+			if (!actionNode.isObject()) {
+				continue;
+			}
+
+			ObjectNode action = (ObjectNode) actionNode;
+
+			if (!"useBackendMethod".equals(
+					action.path("action").asText()
+			)) {
+				continue;
+			}
+
+			if (!previousName.equals(action.path("value").asText())) {
+				continue;
+			}
+
+			action.put("value", updatedName);
+			changed = true;
+		}
+
+		return changed;
+	}
+
+	private boolean renameScenarioOverrideKey(
+			ObjectNode root,
+			String previousName,
+			String updatedName
+	) {
+		JsonNode scenarioOverridesNode = root.get("scenarioOverrides");
+
+		if (
+				scenarioOverridesNode == null
+						|| !scenarioOverridesNode.isObject()
+		) {
+			return false;
+		}
+
+		ObjectNode scenarioOverrides =
+				(ObjectNode) scenarioOverridesNode;
+
+		JsonNode override = scenarioOverrides.remove(previousName);
+
+		if (override == null) {
+			return false;
+		}
+
+		scenarioOverrides.set(updatedName, override);
+
+		return true;
+	}
+
+	private ObjectNode parseScenarioPayload(String payload) {
+		try {
+			JsonNode root = objectMapper.readTree(payload);
+
+			if (root == null || !root.isObject()) {
+				throw new IllegalStateException(
+						"Сценарий содержит невалидный JSON payload"
+				);
+			}
+
+			return (ObjectNode) root;
+		} catch (JsonProcessingException exception) {
+			throw new IllegalStateException(
+					"Сценарий содержит невалидный JSON payload",
+					exception
+			);
+		}
+	}
+
+	private String serializeScenarioPayload(ObjectNode root) {
+		try {
+			return objectMapper.writeValueAsString(root);
+		} catch (JsonProcessingException exception) {
+			throw new IllegalStateException(
+					"Не удалось сериализовать JSON payload сценария",
+					exception
+			);
+		}
+	}
+
+	private void validateAndApplyVariableMigrations(
+			List<ScenarioVariableMigrationRequest> migrations,
+			Set<Long> linkedScenarioIds
+	) {
+		Set<String> migrationVariableNames = new HashSet<>();
+
+		for (ScenarioVariableMigrationRequest migration : migrations) {
+			String variableName = normalizeRequired(
+					migration.variable().name()
+			).toLowerCase(Locale.ROOT);
+
+			if (!migrationVariableNames.add(variableName)) {
+				throw new IllegalArgumentException(
+						"Переменная %s указана в миграции несколько раз"
+								.formatted(migration.variable().name())
+				);
+			}
+
+			Map<Long, String> valuesByScenarioId = migration
+					.scenarioValues()
+					.stream()
+					.collect(Collectors.toMap(
+							ScenarioVariableMigrationValueRequest::scenarioId,
+							ScenarioVariableMigrationValueRequest::defaultValue,
+							(first, second) -> {
+								throw new IllegalArgumentException(
+										"Для одного сценария указано несколько "
+												+ "значений одной переменной"
+								);
+							}
+					));
+
+			if (!valuesByScenarioId.keySet().equals(linkedScenarioIds)) {
+				throw new IllegalArgumentException(
+						"Для переменной %s нужно указать значение для каждого "
+								+ "сценария, использующего backend-метод"
+								.formatted(migration.variable().name())
+				);
+			}
+
+			Variable variable = findOrCreateVariable(migration);
+
+			for (Map.Entry<Long, String> valueEntry
+					: valuesByScenarioId.entrySet()) {
+				upsertScenarioVariable(
+						valueEntry.getKey(),
+						variable,
+						valueEntry.getValue()
+				);
+			}
+		}
+	}
+
+	private Variable findOrCreateVariable(
+			ScenarioVariableMigrationRequest migration
+	) {
+		String variableName = normalizeRequired(
+				migration.variable().name()
+		);
+		String variableDescription = normalizeNullable(
+				migration.variable().description()
+		);
+		boolean isUserVariable = migration.variable().isUserVariable();
+
+		return variableRepository.findAllByOrderByNameAsc()
+				.stream()
+				.filter(variable -> variable.getName()
+						.equalsIgnoreCase(variableName))
+				.findFirst()
+				.map(existingVariable -> {
+					if (existingVariable.isUserVariable() != isUserVariable) {
+						throw new IllegalArgumentException(
+								"Тип переменной %s не совпадает с уже "
+										+ "существующей переменной"
+										.formatted(variableName)
+						);
+					}
+
+					return existingVariable;
+				})
+				.orElseGet(() -> {
+					try {
+						return variableRepository.save(
+								new Variable(
+										variableName,
+										variableDescription,
+										isUserVariable
+								)
+						);
+					} catch (DataIntegrityViolationException exception) {
+						throw new VariableAlreadyExistsException(variableName);
+					}
+				});
+	}
+
+	private void upsertScenarioVariable(
+			Long scenarioId,
+			Variable variable,
+			String defaultValue
+	) {
+		ScenarioVariableId id = new ScenarioVariableId(
+				scenarioId,
+				variable.getId()
+		);
+
+		scenarioVariableRepository.findById(id)
+				.ifPresentOrElse(
+						scenarioVariable -> scenarioVariable.updateDefaultValue(
+								defaultValue
+						),
+						() -> scenarioVariableRepository.save(
+								new ScenarioVariable(
+										scenarioId,
+										variable.getId(),
+										defaultValue,
+										findNextScenarioVariablePosition(scenarioId)
+								)
+						)
+				);
+	}
+
+	private Integer findNextScenarioVariablePosition(Long scenarioId) {
+		return scenarioVariableRepository
+				.findAllByScenarioIdOrderByPositionAsc(scenarioId)
+				.stream()
+				.map(ScenarioVariable::getPosition)
+				.max(Integer::compareTo)
+				.map(position -> position + 1)
+				.orElse(0);
+	}
+
+	private void validateMergeName(
+			BackendRequest backendRequest,
+			String updatedName
+	) {
+		boolean nameChanged = !backendRequest.getName()
+				.equalsIgnoreCase(updatedName);
+
+		if (nameChanged
+				&& backendRequestRepository.existsByNameIgnoreCase(
+				updatedName
+		)) {
+			throw new BackendRequestAlreadyExistsException(updatedName);
+		}
+	}
+
+	private void updateBackendRequest(
+			BackendRequest backendRequest,
+			BackendRequestData data
+	) {
+		backendRequest.update(
+				data.name(),
+				data.url(),
+				data.httpMethod(),
+				data.requestBody(),
+				data.requestHeadersJson(),
+				data.capturedResponseBody(),
+				data.token(),
+				data.bodyType(),
+				data.formDataJson(),
+				data.fieldOverridesJson(),
+				data.responseExtractorsJson()
+		);
 	}
 
 	private BackendRequest findById(Long id) {
@@ -172,8 +574,7 @@ public class BackendRequestService {
 				normalizeJsonArray(
 						request.responseExtractorsJson(),
 						"responseExtractorsJson"
-				),
-				normalizeNullable(request.capturedAt())
+				)
 		);
 	}
 
@@ -245,7 +646,9 @@ public class BackendRequestService {
 		}
 	}
 
-	private BackendRequestResponse toResponse(BackendRequest backendRequest) {
+	private BackendRequestResponse toResponse(
+			BackendRequest backendRequest
+	) {
 		return new BackendRequestResponse(
 				backendRequest.getId(),
 				backendRequest.getName(),
@@ -258,27 +661,8 @@ public class BackendRequestService {
 				backendRequest.getBodyType(),
 				backendRequest.getFormDataJson(),
 				backendRequest.getFieldOverridesJson(),
-				backendRequest.getResponseExtractorsJson(),
-				backendRequest.getCapturedAt(),
-				backendRequest.getCreatedAt(),
-				backendRequest.getUpdatedAt()
+				backendRequest.getResponseExtractorsJson()
 		);
-	}
-
-	private record BackendRequestData(
-			String name,
-			String url,
-			String httpMethod,
-			String requestBody,
-			String requestHeadersJson,
-			String capturedResponseBody,
-			String token,
-			String bodyType,
-			String formDataJson,
-			String fieldOverridesJson,
-			String responseExtractorsJson,
-			String capturedAt
-	) {
 	}
 
 	private BackendRequest createIfAbsent(
@@ -303,18 +687,26 @@ public class BackendRequestService {
 							data.bodyType(),
 							data.formDataJson(),
 							data.fieldOverridesJson(),
-							data.responseExtractorsJson(),
-							data.capturedAt()
+							data.responseExtractorsJson()
 					)
 			);
 		} catch (DataIntegrityViolationException exception) {
-			/*
-			 * Возможна гонка: два потока одновременно увидели, что имени ещё
-			 * нет. UNIQUE(name) в БД остаётся финальной защитой. Для bulk
-			 * импорта такой конфликт означает «его уже успели создать»,
-			 * поэтому пропускаем.
-			 */
 			return null;
 		}
+	}
+
+	private record BackendRequestData(
+			String name,
+			String url,
+			String httpMethod,
+			String requestBody,
+			String requestHeadersJson,
+			String capturedResponseBody,
+			String token,
+			String bodyType,
+			String formDataJson,
+			String fieldOverridesJson,
+			String responseExtractorsJson
+	) {
 	}
 }

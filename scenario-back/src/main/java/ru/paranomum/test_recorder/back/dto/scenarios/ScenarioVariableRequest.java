@@ -8,6 +8,9 @@ public record ScenarioVariableRequest(
 		@NotNull(message = "ID переменной обязателен")
 		Long variableId,
 
+		@NotNull(message = "Значение по умолчанию обязательно")
+		String defaultValue,
+
 		@NotNull(message = "Позиция переменной обязательна")
 		@PositiveOrZero(message = "Позиция переменной не может быть отрицательной")
 		Integer position

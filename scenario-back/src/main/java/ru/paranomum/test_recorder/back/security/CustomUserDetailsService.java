@@ -4,7 +4,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
-import ru.paranomum.test_recorder.back.entity.User;
 import ru.paranomum.test_recorder.back.repository.UserRepository;
 
 @Service
@@ -18,15 +17,15 @@ public class CustomUserDetailsService implements UserDetailsService {
 
 	@Override
 	public UserDetails loadUserByUsername(String username) {
-		User user = userRepository.findByUsernameIgnoreCase(username)
+		AuthUserProjection user = userRepository.findAuthUserByUsername(username)
 				.orElseThrow(() -> new UsernameNotFoundException(
 						"Пользователь не найден"
 				));
 
 		return new CustomUserDetails(
-				user.getId(),
-				user.getUsername(),
-				user.getPasswordHash()
+				user.id(),
+				user.username(),
+				user.passwordHash()
 		);
 	}
 }

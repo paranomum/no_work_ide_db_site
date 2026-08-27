@@ -1,10 +1,14 @@
 package ru.paranomum.test_recorder.back.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Entity
+@Getter
+@Setter
 @Table(name = "scenarios")
 public class Scenario {
 
@@ -21,13 +25,7 @@ public class Scenario {
 	@Column(name = "scenario_payload_json", nullable = false)
 	private String scenarioPayloadJson;
 
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private LocalDateTime createdAt;
-
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
-
-	protected Scenario() {
+	public Scenario() {
 	}
 
 	public Scenario(
@@ -54,14 +52,6 @@ public class Scenario {
 
 	public String getScenarioPayloadJson() {
 		return scenarioPayloadJson;
-	}
-
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
 	}
 
 	public void update(

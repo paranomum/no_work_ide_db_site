@@ -8,244 +8,56 @@ import {
   Card,
   Empty,
   Space,
+  Spin,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
   message,
 } from 'antd';
+import axios from 'axios';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Virtuoso } from 'react-virtuoso';
 
+import {
+  ScenarioJsonEditor,
+} from '../../features/scenarioImport/ui/ScenarioJsonEdit';
+import { http } from '../../shared/api/http';
+import type {
+  ScenarioCustomMethodResponse,
+  ScenarioListItem,
+  ScenarioResponse,
+  ScenarioTagsRequest,
+  ScenarioVariableResponse,
+  TagResponse,
+  UserVariableResponse,
+} from '../../shared/types/scenario';
 import { AppInput } from '../../shared/ui/AppInput/AppInput';
 import { AppTextArea } from '../../shared/ui/AppInput/AppTextArea';
-import { ScenarioItem } from '../../shared/ui/ScenarioItem/ScenarioItem';
-import type { ScenarioListItem } from '../../shared/types/scenario';
 import { AppSelectMultiple } from '../../shared/ui/AppSelectMultiple/AppSelectMultiple';
+import { ScenarioItem } from '../../shared/ui/ScenarioItem/ScenarioItem';
 import styles from './ScenarioPage.module.css';
 
 const { Title, Text } = Typography;
 
-interface ScenarioVariable {
-  name: string;
-  defaultValue: string;
-}
-
-interface UserVariable {
-  id: string;
-  name: string;
-  value: string;
-}
+type EditableField = 'name' | 'tags' | 'description' | null;
 
 interface ScenarioUserVariable {
-  id: string;
+  id: number;
   name: string;
+  description: string | null;
+  isUserVariable: boolean;
   value: string;
-  defaultValue: string;
-}
-
-interface ScenarioDetails extends ScenarioListItem {
-  relatedScenarioIds: string[];
-  variables: ScenarioVariable[];
-  steps: string;
-}
-
-type EditableField = 'name' | 'tags' | 'steps' | null;
-
-const FALLBACK_TAGS = [
-  'вакансия',
-  'заявка',
-  'оффер',
-  'кандидат',
-  'согласование',
-  'воронка',
-];
-
-const DEFAULT_SCENARIOS: ScenarioListItem[] = [
-  {
-    id: 'scenario-1',
-    name: 'Обработка кандидата: массовый подбор',
-    tags: ['вакансия', 'заявка', 'кандидат'],
-  },
-  {
-    id: 'scenario-2',
-    name: 'Создание вакансии',
-    tags: ['вакансия'],
-  },
-  {
-    id: 'scenario-3',
-    name: 'Создание и согласование заявки',
-    tags: ['заявка', 'согласование'],
-  },
-  {
-    id: 'scenario-4',
-    name: 'Оформление оффера',
-    tags: ['оффер', 'кандидат'],
-  },
-  {
-    id: 'scenario-5',
-    name: 'Перевод кандидата на этап воронки',
-    tags: ['кандидат', 'воронка'],
-  },
-];
-
-const DEFAULT_SCENARIO_DETAILS: Record<string, ScenarioDetails> = {
-  'scenario-1': {
-    id: 'scenario-1',
-    name: 'Обработка кандидата: массовый подбор',
-    tags: ['вакансия', 'заявка', 'кандидат'],
-    relatedScenarioIds: [
-      'scenario-2',
-      'scenario-3',
-      'scenario-4',
-      'scenario-5',
-    ],
-    variables: [
-      { name: 'recruiter.username', defaultValue: '' },
-      { name: 'recruiter.password', defaultValue: '' },
-      { name: 'recruiter.uuid', defaultValue: '' },
-      { name: 'hrbp.username', defaultValue: '' },
-      { name: 'hrbp.password', defaultValue: '' },
-      { name: 'candidate.id', defaultValue: 'json(response[0].candidateTo.id)' },
-      { name: 'vacancy.id', defaultValue: 'json(response.id)' },
-    ],
-    steps: `Создание вакансии
-Создание и согласование заявки
-Создание кандидата
-Получение CV кандидата
-Добавление кандидата в вакансию
-Прикрепление заявки к вакансии`,
-  },
-  'scenario-2': {
-    id: 'scenario-2',
-    name: 'Создание вакансии',
-    tags: ['вакансия'],
-    relatedScenarioIds: [],
-    variables: [
-      { name: 'vacancy_creator.username', defaultValue: '' },
-      { name: 'vacancy_creator.password', defaultValue: '' },
-      { name: 'vacancy.id', defaultValue: 'json(response.id)' },
-    ],
-    steps: `Получить токен создателя вакансии
-Создать вакансию
-Сохранить vacancy.id`,
-  },
-  'scenario-3': {
-    id: 'scenario-3',
-    name: 'Создание и согласование заявки',
-    tags: ['заявка', 'согласование'],
-    relatedScenarioIds: ['scenario-2'],
-    variables: [
-      { name: 'jr_creator.username', defaultValue: '' },
-      { name: 'jr_creator.password', defaultValue: '' },
-      { name: 'jr.id', defaultValue: 'json(response.id)' },
-      { name: 'step.id', defaultValue: 'json(response[0].id)' },
-    ],
-    steps: `Получить токен создателя заявки
-Создать заявку
-Получить текущий шаг
-Согласовать заявку`,
-  },
-  'scenario-4': {
-    id: 'scenario-4',
-    name: 'Оформление оффера',
-    tags: ['оффер', 'кандидат'],
-    relatedScenarioIds: ['scenario-5'],
-    variables: [
-      { name: 'offer_creator.username', defaultValue: '' },
-      { name: 'offer_creator.password', defaultValue: '' },
-      { name: 'offer_creator.uuid', defaultValue: '' },
-    ],
-    steps: `Создать оффер
-Заполнить данные кандидата
-Подтвердить оффер`,
-  },
-  'scenario-5': {
-    id: 'scenario-5',
-    name: 'Перевод кандидата на этап воронки',
-    tags: ['кандидат', 'воронка'],
-    relatedScenarioIds: [],
-    variables: [
-      { name: 'candidate.id', defaultValue: '' },
-      { name: 'vacancy.id', defaultValue: '' },
-      { name: 'recruiter.username', defaultValue: '' },
-    ],
-    steps: `Получить кандидата
-Выбрать этап воронки
-Перевести кандидата`,
-  },
-};
-
-function readStorage<T>(key: string, fallback: T): T {
-  const rawValue = localStorage.getItem(key);
-
-  if (!rawValue) {
-    return fallback;
-  }
-
-  try {
-    return JSON.parse(rawValue) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function getScenarioList(): ScenarioListItem[] {
-  const scenarios = readStorage(
-    'scenario-db.scenarios',
-    DEFAULT_SCENARIOS,
-  );
-
-  return scenarios.length > 0 ? scenarios : DEFAULT_SCENARIOS;
-}
-
-function getScenarioDetails(scenarioId: string): ScenarioDetails {
-  const storedScenario = localStorage.getItem(
-    `scenario-db.scenario-details.${scenarioId}`,
-  );
-
-  if (storedScenario) {
-    try {
-      return JSON.parse(storedScenario) as ScenarioDetails;
-    } catch {
-      // Используем fallback.
-    }
-  }
-
-  return (
-    DEFAULT_SCENARIO_DETAILS[scenarioId] ?? {
-      id: scenarioId,
-      name: 'Новый сценарий',
-      tags: [],
-      relatedScenarioIds: [],
-      variables: [],
-      steps: '',
-    }
-  );
-}
-
-function getUserVariables(): UserVariable[] {
-  return readStorage<UserVariable[]>('scenario-db.user-variables', []);
-}
-
-function getAvailableTags(): string[] {
-  const storedTags = readStorage<Array<{ name: string }>>(
-    'scenario-db.tags',
-    [],
-  );
-
-  if (storedTags.length === 0) {
-    return FALLBACK_TAGS;
-  }
-
-  return storedTags.map((tag) => tag.name);
+  isSet: boolean;
 }
 
 interface EditableCardProps {
   title: string;
   isEditing: boolean;
+  isSaving: boolean;
   onStartEditing: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -253,9 +65,34 @@ interface EditableCardProps {
   editor: React.ReactNode;
 }
 
+function mapScenarioToListItem(
+  scenario: ScenarioCustomMethodResponse,
+): ScenarioListItem {
+  return {
+    id: String(scenario.scenarioId),
+    name: scenario.name,
+    tags: [],
+  };
+}
+
+function getApiErrorMessage(
+  error: unknown,
+  defaultMessage: string,
+): string {
+  if (
+    axios.isAxiosError(error) &&
+    typeof error.response?.data?.message === 'string'
+  ) {
+    return error.response.data.message;
+  }
+
+  return defaultMessage;
+}
+
 function EditableCard({
   title,
   isEditing,
+  isSaving,
   onStartEditing,
   onSave,
   onCancel,
@@ -272,12 +109,17 @@ function EditableCard({
               type="primary"
               size="small"
               icon={<SaveOutlined />}
+              loading={isSaving}
               onClick={onSave}
             >
               Сохранить
             </Button>
 
-            <Button size="small" onClick={onCancel}>
+            <Button
+              size="small"
+              disabled={isSaving}
+              onClick={onCancel}
+            >
               Отмена
             </Button>
           </Space>
@@ -312,117 +154,241 @@ export function ScenarioPage() {
 
   const currentScenarioId = scenarioId ?? '';
 
-  const [scenario, setScenario] = useState<ScenarioDetails>(() =>
-    getScenarioDetails(currentScenarioId),
-  );
-
-  const [editingField, setEditingField] = useState<EditableField>(null);
-
-  const [draftName, setDraftName] = useState(scenario.name);
-  const [draftTags, setDraftTags] = useState<string[]>(scenario.tags);
-  const [draftSteps, setDraftSteps] = useState(scenario.steps);
-
-  const [userVariables, setUserVariables] =
-    useState<UserVariable[]>(getUserVariables);
-
-  const [editingVariableId, setEditingVariableId] = useState<string | null>(
+  const [scenario, setScenario] = useState<ScenarioResponse | null>(
     null,
   );
-  const [editingVariableValue, setEditingVariableValue] = useState('');
+  const [availableTags, setAvailableTags] = useState<TagResponse[]>([]);
+  const [relatedScenarios, setRelatedScenarios] = useState<
+    ScenarioListItem[]
+  >([]);
+  const [scenarioVariables, setScenarioVariables] = useState<
+    ScenarioVariableResponse[]
+  >([]);
+  const [userVariables, setUserVariables] = useState<
+    UserVariableResponse[]
+  >([]);
 
-  const allScenarios = useMemo(getScenarioList, []);
-  const availableTags = useMemo(getAvailableTags, []);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [editingField, setEditingField] =
+    useState<EditableField>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftTags, setDraftTags] = useState<string[]>([]);
+  const [draftDescription, setDraftDescription] = useState('');
+  const [isSavingField, setIsSavingField] = useState(false);
+
+  const [editingVariableId, setEditingVariableId] = useState<
+    number | null
+  >(null);
+  const [editingVariableValue, setEditingVariableValue] = useState('');
+  const [isSavingVariable, setIsSavingVariable] = useState(false);
 
   useEffect(() => {
     if (!currentScenarioId) {
+      setLoadError('Не указан идентификатор сценария');
+      setIsLoading(false);
       return;
     }
 
-    localStorage.setItem(
-      `scenario-db.scenario-details.${currentScenarioId}`,
-      JSON.stringify(scenario),
-    );
-  }, [currentScenarioId, scenario]);
+    let isMounted = true;
 
-  useEffect(() => {
-    localStorage.setItem(
-      'scenario-db.user-variables',
-      JSON.stringify(userVariables),
-    );
-  }, [userVariables]);
+    const loadPage = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
 
-  const relatedScenarios = useMemo(() => {
-    return scenario.relatedScenarioIds
-      .map((relatedScenarioId) =>
-        allScenarios.find((item) => item.id === relatedScenarioId),
-      )
-      .filter((item): item is ScenarioListItem => Boolean(item));
-  }, [allScenarios, scenario.relatedScenarioIds]);
+        const [
+          scenarioResponse,
+          tagsResponse,
+          relatedScenariosResponse,
+          scenarioVariablesResponse,
+          userVariablesResponse,
+        ] = await Promise.all([
+          http.get<ScenarioResponse>(`/scenarios/${currentScenarioId}`),
+          http.get<TagResponse[]>('/tags'),
+          http.get<ScenarioCustomMethodResponse[]>(
+            `/scenarios/${currentScenarioId}/custom-methods`,
+          ),
+          http.get<ScenarioVariableResponse[]>(
+            `/scenarios/${currentScenarioId}/variables`,
+          ),
+          http.get<UserVariableResponse[]>('/users/me/variables'),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setScenario(scenarioResponse.data);
+        setAvailableTags(tagsResponse.data);
+        setRelatedScenarios(
+          relatedScenariosResponse.data.map(mapScenarioToListItem),
+        );
+        setScenarioVariables(scenarioVariablesResponse.data);
+        setUserVariables(userVariablesResponse.data);
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(
+            getApiErrorMessage(
+              error,
+              'Не удалось загрузить данные сценария',
+            ),
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadPage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentScenarioId]);
 
   const scenarioUserVariables = useMemo<ScenarioUserVariable[]>(() => {
-    return scenario.variables.map((scenarioVariable) => {
-      const savedUserValue = userVariables.find(
-        (userVariable) => userVariable.name === scenarioVariable.name,
-      );
+    return scenarioVariables
+      .filter((scenarioVariable) => scenarioVariable.isUserVariable)
+      .map((scenarioVariable) => {
+        const userVariable = userVariables.find(
+          (item) => item.variableId === scenarioVariable.variableId,
+        );
 
-      return {
-        id: savedUserValue?.id ?? scenarioVariable.name,
-        name: scenarioVariable.name,
-        value: savedUserValue?.value ?? '',
-        defaultValue: scenarioVariable.defaultValue,
-      };
-    });
-  }, [scenario.variables, userVariables]);
+        return {
+          id: scenarioVariable.variableId,
+          name: scenarioVariable.name,
+          description: scenarioVariable.description,
+          isUserVariable: scenarioVariable.isUserVariable,
+          value: userVariable?.value ?? '',
+          isSet: userVariable?.isSet ?? false,
+        };
+      });
+  }, [scenarioVariables, userVariables]);
 
-  const startFieldEditing = (field: Exclude<EditableField, null>) => {
+  const startFieldEditing = (
+    field: Exclude<EditableField, null>,
+  ) => {
+    if (!scenario) {
+      return;
+    }
+
     setDraftName(scenario.name);
-    setDraftTags(scenario.tags);
-    setDraftSteps(scenario.steps);
+    setDraftTags(scenario.tags.map((tag) => tag.name));
+    setDraftDescription(scenario.description ?? '');
     setEditingField(field);
   };
 
   const cancelFieldEditing = () => {
-    setDraftName(scenario.name);
-    setDraftTags(scenario.tags);
-    setDraftSteps(scenario.steps);
+    if (scenario) {
+      setDraftName(scenario.name);
+      setDraftTags(scenario.tags.map((tag) => tag.name));
+      setDraftDescription(scenario.description ?? '');
+    }
+
     setEditingField(null);
   };
 
-  const saveField = () => {
-    if (editingField === 'name') {
-      const normalizedName = draftName.trim();
+  const saveScenarioData = async (
+    updatedName: string,
+    updatedDescription: string,
+  ) => {
+    if (!scenario) {
+      return null;
+    }
 
-      if (!normalizedName) {
-        message.error('Название сценария не может быть пустым');
-        return;
+    const { data } = await http.put<ScenarioResponse>(
+      `/scenarios/${scenario.id}`,
+      {
+        name: updatedName,
+        description: updatedDescription,
+        scenarioPayloadJson: scenario.scenarioPayloadJson,
+      },
+    );
+
+    setScenario(data);
+
+    return data;
+  };
+
+  const saveField = async () => {
+    if (!scenario || !editingField) {
+      return;
+    }
+
+    try {
+      setIsSavingField(true);
+
+      if (editingField === 'name') {
+        const normalizedName = draftName.trim();
+
+        if (!normalizedName) {
+          message.error('Название сценария не может быть пустым');
+          return;
+        }
+
+        await saveScenarioData(
+          normalizedName,
+          scenario.description ?? '',
+        );
+
+        message.success('Название сценария сохранено');
       }
 
-      setScenario((currentScenario) => ({
-        ...currentScenario,
-        name: normalizedName,
-      }));
-    }
+      if (editingField === 'description') {
+        await saveScenarioData(
+          scenario.name,
+          draftDescription.trim(),
+        );
 
-    if (editingField === 'tags') {
-      setScenario((currentScenario) => ({
-        ...currentScenario,
-        tags: draftTags,
-      }));
-    }
+        message.success('Описание сценария сохранено');
+      }
 
-    if (editingField === 'steps') {
-      setScenario((currentScenario) => ({
-        ...currentScenario,
-        steps: draftSteps,
-      }));
-    }
+      if (editingField === 'tags') {
+        const tagIds = draftTags
+          .map((tagName) =>
+            availableTags.find((tag) => tag.name === tagName),
+          )
+          .filter((tag): tag is TagResponse => Boolean(tag))
+          .map((tag) => tag.id);
 
-    setEditingField(null);
-    message.success('Изменения сохранены');
+        const request: ScenarioTagsRequest = { tagIds };
+
+        const { data } = await http.put<TagResponse[]>(
+          `/scenarios/${scenario.id}/tags`,
+          request,
+        );
+
+        setScenario((currentScenario) =>
+          currentScenario
+            ? {
+                ...currentScenario,
+                tags: data,
+              }
+            : currentScenario,
+        );
+
+        message.success('Теги сценария сохранены');
+      }
+
+      setEditingField(null);
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось сохранить изменения сценария',
+        ),
+      );
+    } finally {
+      setIsSavingField(false);
+    }
   };
 
   const startVariableEditing = (
-    variableId: string,
+    variableId: number,
     currentValue: string,
   ) => {
     setEditingVariableId(variableId);
@@ -434,35 +400,67 @@ export function ScenarioPage() {
     setEditingVariableValue('');
   };
 
-  const saveVariableValue = (variableName: string) => {
-    setUserVariables((currentVariables) => {
-      const existingVariable = currentVariables.find(
-        (variable) => variable.name === variableName,
-      );
+  const saveVariableValue = async (variableId: number) => {
+    try {
+      setIsSavingVariable(true);
 
-      if (existingVariable) {
-        return currentVariables.map((variable) =>
-          variable.name === variableName
-            ? {
-                ...variable,
-                value: editingVariableValue,
-              }
-            : variable,
+      await http.put(`/users/me/variables/${variableId}`, {
+        value: editingVariableValue,
+      });
+
+      setUserVariables((currentVariables) => {
+        const existingVariable = currentVariables.find(
+          (item) => item.variableId === variableId,
         );
-      }
 
-      return [
-        ...currentVariables,
-        {
-          id: crypto.randomUUID(),
-          name: variableName,
-          value: editingVariableValue,
-        },
-      ];
-    });
+        if (existingVariable) {
+          return currentVariables.map((item) =>
+            item.variableId === variableId
+              ? {
+                  ...item,
+                  value: editingVariableValue,
+                  isSet: true,
+                }
+              : item,
+          );
+        }
 
-    cancelVariableEditing();
-    message.success('Значение переменной сохранено');
+        const scenarioVariable = scenarioVariables.find(
+          (item) => item.variableId === variableId,
+        );
+
+        if (!scenarioVariable) {
+          return currentVariables;
+        }
+
+        return [
+          ...currentVariables,
+          {
+            variableId,
+            name: scenarioVariable.name,
+            description: scenarioVariable.description,
+            value: editingVariableValue,
+            isSet: true,
+          },
+        ];
+      });
+
+      cancelVariableEditing();
+      message.success('Значение переменной сохранено');
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось сохранить значение переменной',
+        ),
+      );
+    } finally {
+      setIsSavingVariable(false);
+    }
+  };
+
+  const openRelatedScenario = (relatedScenarioId: string) => {
+    navigate(`/scenarios/${relatedScenarioId}`);
   };
 
   const variableColumns: ColumnsType<ScenarioUserVariable> = [
@@ -471,8 +469,14 @@ export function ScenarioPage() {
       dataIndex: 'name',
       key: 'name',
       width: '42%',
-      render: (name: string) => (
-        <Typography.Text code>{name}</Typography.Text>
+      render: (name: string, variable) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text code>{name}</Typography.Text>
+
+          {variable.description && (
+            <Text type="secondary">{variable.description}</Text>
+          )}
+        </Space>
       ),
     },
     {
@@ -488,13 +492,14 @@ export function ScenarioPage() {
               autoFocus
               value={editingVariableValue}
               placeholder="Введите значение"
+              disabled={isSavingVariable}
               onChange={(event) => {
                 setEditingVariableValue(event.target.value);
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
-                  saveVariableValue(variable.name);
+                  void saveVariableValue(variable.id);
                   return;
                 }
 
@@ -535,12 +540,17 @@ export function ScenarioPage() {
             <Space size={4}>
               <Button
                 type="link"
-                onClick={() => saveVariableValue(variable.name)}
+                loading={isSavingVariable}
+                onClick={() => void saveVariableValue(variable.id)}
               >
                 Сохранить
               </Button>
 
-              <Button type="link" onClick={cancelVariableEditing}>
+              <Button
+                type="link"
+                disabled={isSavingVariable}
+                onClick={cancelVariableEditing}
+              >
                 Отмена
               </Button>
             </Space>
@@ -561,232 +571,334 @@ export function ScenarioPage() {
     },
   ];
 
-  const openRelatedScenario = (relatedScenarioId: string) => {
-    navigate(`/scenarios/${relatedScenarioId}`);
-  };
+  if (isLoading) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.content}>
+          <div
+            style={{
+              minHeight: 320,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Spin size="large" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (loadError || !scenario) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.content}>
+          <Button
+            type="text"
+            size="large"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(-1)}
+          >
+            Назад
+          </Button>
+
+          <Empty
+            description={loadError ?? 'Сценарий не найден'}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.page}>
       <div className={styles.content}>
         <section className={styles.scenarioHeader}>
-  <div className={styles.scenarioTitleRow}>
-    <div className={styles.scenarioTitleContent}>
-  <Button
-    type="text"
-    size="large"
-    icon={<ArrowLeftOutlined />}
-    aria-label="Вернуться к списку сценариев"
-    onClick={() => navigate(-1)}
-  />
+          <div className={styles.scenarioTitleRow}>
+            <div className={styles.scenarioTitleContent}>
+              <Button
+                type="text"
+                size="large"
+                icon={<ArrowLeftOutlined />}
+                aria-label="Вернуться к списку сценариев"
+                onClick={() => navigate(-1)}
+              />
 
-  {editingField === 'name' ? (
-    <AppInput
-      autoFocus
-      size="large"
-      className={styles.scenarioNameInput}
-      value={draftName}
-      placeholder="Введите название сценария"
-      onChange={(event) => setDraftName(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveField();
-          return;
-        }
+              {editingField === 'name' ? (
+                <AppInput
+                  autoFocus
+                  size="large"
+                  className={styles.scenarioNameInput}
+                  value={draftName}
+                  placeholder="Введите название сценария"
+                  disabled={isSavingField}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void saveField();
+                      return;
+                    }
 
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          cancelFieldEditing();
-        }
-      }}
-    />
-  ) : (
-    <button
-  type="button"
-  className={styles.scenarioNameButton}
-  title="Нажмите, чтобы изменить название"
-  onClick={() => startFieldEditing('name')}
->
-  <Title level={2} className={styles.scenarioName}>
-    {scenario.name || 'Название не задано'}
-  </Title>
-</button>
-  )}
-</div>
-
-    {editingField === 'name' ? (
-      <Space size={4}>
-        <Button
-          type="primary"
-          icon={<SaveOutlined />}
-          onClick={saveField}
-        >
-          Сохранить
-        </Button>
-
-        <Button onClick={cancelFieldEditing}>Отмена</Button>
-      </Space>
-    ) : (
-      <Tooltip title="Редактировать название">
-        <Button
-          type="text"
-          size="large"
-          icon={<EditOutlined />}
-          aria-label="Редактировать название сценария"
-          onClick={() => startFieldEditing('name')}
-        />
-      </Tooltip>
-    )}
-  </div>
-
-  <div className={styles.scenarioTagsRow}>
-    <div className={styles.scenarioTagsContent}>
-      {editingField === 'tags' ? (
-        <AppSelectMultiple
-  autoFocus
-  allowClear
-  size="large"
-  className={styles.tagSelect}
-  placeholder="Выберите теги"
-  value={draftTags}
-  options={availableTags.map((tag) => ({
-    value: tag,
-    label: tag,
-  }))}
-  onChange={setDraftTags}
-  onCancelEditing={cancelFieldEditing}
-  onSaveEditing={saveField}
-/>
-      ) : (
-        <div
-          className={styles.tagsList}
-          title="Дважды кликните, чтобы изменить теги"
-          onDoubleClick={() => startFieldEditing('tags')}
-        >
-          {scenario.tags.length > 0 ? (
-            <Space size={[8, 8]} wrap>
-              {scenario.tags.map((tag) => (
-                <Tag key={tag} color="blue" className={styles.scenarioTag}>
-                  {tag}
-                </Tag>
-              ))}
-            </Space>
-          ) : (
-            <Text type="secondary">Теги не заданы</Text>
-          )}
-        </div>
-      )}
-    </div>
-
-    {editingField === 'tags' ? (
-      <Space size={4}>
-        <Button
-          type="primary"
-          icon={<SaveOutlined />}
-          onClick={saveField}
-        >
-          Сохранить
-        </Button>
-
-        <Button onClick={cancelFieldEditing}>Отмена</Button>
-      </Space>
-    ) : (
-      <Tooltip title="Редактировать теги">
-        <Button
-          type="text"
-          size="large"
-          icon={<EditOutlined />}
-          aria-label="Редактировать теги сценария"
-          onClick={() => startFieldEditing('tags')}
-        />
-      </Tooltip>
-    )}
-  </div>
-</section>
-
-        <Card title={`Связанные сценарии: ${relatedScenarios.length}`}>
-          {relatedScenarios.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Связанных сценариев нет"
-            />
-          ) : (
-            <Virtuoso
-              className={styles.relatedList}
-              data={relatedScenarios}
-              computeItemKey={(_, item) => item.id}
-              itemContent={(_, relatedScenario) => (
-                <ScenarioItem
-                  scenario={relatedScenario}
-                  hideActions
-                  onOpen={openRelatedScenario}
-                  onEdit={openRelatedScenario}
-                  onDownload={() => undefined}
-                  onDownloadWithoutRelated={() => undefined}
-                  onDelete={() => undefined}
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      cancelFieldEditing();
+                    }
+                  }}
                 />
+              ) : (
+                <button
+                  type="button"
+                  className={styles.scenarioNameButton}
+                  title="Нажмите, чтобы изменить название"
+                  onClick={() => startFieldEditing('name')}
+                >
+                  <Title level={2} className={styles.scenarioName}>
+                    {scenario.name}
+                  </Title>
+                </button>
               )}
-            />
-          )}
-        </Card>
+            </div>
 
-        <Card title="Переменные">
-          <Typography.Paragraph type="secondary">
-            Набор переменных определяется сценарием. Здесь редактируются
-            только персональные значения текущего пользователя.
-          </Typography.Paragraph>
+            {editingField === 'name' ? (
+              <Space size={4}>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={isSavingField}
+                  onClick={() => void saveField()}
+                >
+                  Сохранить
+                </Button>
 
-          <Table<ScenarioUserVariable>
-            rowKey="id"
-            columns={variableColumns}
-            dataSource={scenarioUserVariables}
-            pagination={false}
-            locale={{
-              emptyText: 'В сценарии нет переменных',
-            }}
-          />
-        </Card>
-
-        <EditableCard
-          title="Шаги"
-          isEditing={editingField === 'steps'}
-          onStartEditing={() => startFieldEditing('steps')}
-          onSave={saveField}
-          onCancel={cancelFieldEditing}
-          display={
-            scenario.steps ? (
-              <Typography.Paragraph className={styles.stepsValue}>
-                {scenario.steps}
-              </Typography.Paragraph>
+                <Button
+                  disabled={isSavingField}
+                  onClick={cancelFieldEditing}
+                >
+                  Отмена
+                </Button>
+              </Space>
             ) : (
-              <Text type="secondary">Шаги не заданы</Text>
-            )
-          }
-          editor={
-            <AppTextArea
-              autoFocus
-              value={draftSteps}
-              autoSize={{ minRows: 8, maxRows: 24 }}
-              placeholder="Введите шаги сценария"
-              onChange={(event) => setDraftSteps(event.target.value)}
-              onKeyDown={(event) => {
-                const isSaveShortcut =
-                  event.key === 'Enter' &&
-                  (event.metaKey || event.ctrlKey);
+              <Tooltip title="Редактировать название">
+                <Button
+                  type="text"
+                  size="large"
+                  icon={<EditOutlined />}
+                  aria-label="Редактировать название сценария"
+                  onClick={() => startFieldEditing('name')}
+                />
+              </Tooltip>
+            )}
+          </div>
 
-                if (isSaveShortcut) {
-                  event.preventDefault();
-                  saveField();
-                  return;
-                }
+          <div className={styles.scenarioTagsRow}>
+            <div className={styles.scenarioTagsContent}>
+              {editingField === 'tags' ? (
+                <AppSelectMultiple
+                  autoFocus
+                  allowClear
+                  size="large"
+                  className={styles.tagSelect}
+                  placeholder="Выберите теги"
+                  value={draftTags}
+                  options={availableTags.map((tag) => ({
+                    value: tag.name,
+                    label: tag.name,
+                  }))}
+                  disabled={isSavingField}
+                  onChange={setDraftTags}
+                  onCancelEditing={cancelFieldEditing}
+                  onSaveEditing={() => void saveField()}
+                />
+              ) : (
+                <div
+                  className={styles.tagsList}
+                  title="Дважды кликните, чтобы изменить теги"
+                  onDoubleClick={() => startFieldEditing('tags')}
+                >
+                  {scenario.tags.length > 0 ? (
+                    <Space size={[8, 8]} wrap>
+                      {scenario.tags.map((tag) => (
+                        <Tag
+                          key={tag.id}
+                          color={tag.color}
+                          className={styles.scenarioTag}
+                        >
+                          {tag.name}
+                        </Tag>
+                      ))}
+                    </Space>
+                  ) : (
+                    <Text type="secondary">Теги не заданы</Text>
+                  )}
+                </div>
+              )}
+            </div>
 
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  cancelFieldEditing();
-                }
-              }}
-            />
+            {editingField === 'tags' ? (
+              <Space size={4}>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={isSavingField}
+                  onClick={() => void saveField()}
+                >
+                  Сохранить
+                </Button>
+
+                <Button
+                  disabled={isSavingField}
+                  onClick={cancelFieldEditing}
+                >
+                  Отмена
+                </Button>
+              </Space>
+            ) : (
+              <Tooltip title="Редактировать теги">
+                <Button
+                  type="text"
+                  size="large"
+                  icon={<EditOutlined />}
+                  aria-label="Редактировать теги сценария"
+                  onClick={() => startFieldEditing('tags')}
+                />
+              </Tooltip>
+            )}
+          </div>
+        </section>
+
+        <Tabs
+          defaultActiveKey="main"
+          items={[
+            {
+              key: 'main',
+              label: 'Основная информация',
+              children: (
+                <>
+                  <Card
+                    title={`Связанные сценарии: ${relatedScenarios.length}`}
+                  >
+                    {relatedScenarios.length === 0 ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="Связанных сценариев нет"
+                      />
+                    ) : (
+                      <Virtuoso
+                        className={styles.relatedList}
+                        data={relatedScenarios}
+                        computeItemKey={(_, item) => item.id}
+                        itemContent={(_, relatedScenario) => (
+                          <ScenarioItem
+  scenario={relatedScenario}
+  hideActions
+  onOpen={openRelatedScenario}
+  onEdit={openRelatedScenario}
+  onDownloadOriginal={() => undefined}
+  onDownloadFull={() => undefined}
+  onDownloadZip={() => undefined}
+  onDelete={async () => undefined}
+/>
+                        )}
+                      />
+                    )}
+                  </Card>
+
+                  <Card title="Переменные">
+                    <Typography.Paragraph type="secondary">
+                      Набор переменных определяется сценарием. Здесь
+                      редактируются только персональные значения текущего
+                      пользователя.
+                    </Typography.Paragraph>
+
+                    <Table<ScenarioUserVariable>
+                      rowKey="id"
+                      columns={variableColumns}
+                      dataSource={scenarioUserVariables}
+                      pagination={false}
+                      locale={{
+                        emptyText:
+                          'В сценарии нет персональных переменных пользователя',
+                      }}
+                    />
+                  </Card>
+
+                  <EditableCard
+                    title="Описание"
+                    isEditing={editingField === 'description'}
+                    isSaving={isSavingField}
+                    onStartEditing={() =>
+                      startFieldEditing('description')
+                    }
+                    onSave={() => void saveField()}
+                    onCancel={cancelFieldEditing}
+                    display={
+                      scenario.description ? (
+                        <Typography.Paragraph
+                          className={styles.stepsValue}
+                        >
+                          {scenario.description}
+                        </Typography.Paragraph>
+                      ) : (
+                        <Text type="secondary">Описание не задано</Text>
+                      )
+                    }
+                    editor={
+                      <AppTextArea
+                        autoFocus
+                        value={draftDescription}
+                        disabled={isSavingField}
+                        autoSize={{ minRows: 6, maxRows: 16 }}
+                        placeholder="Введите описание сценария"
+                        onChange={(event) =>
+                          setDraftDescription(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          const isSaveShortcut =
+                            event.key === 'Enter' &&
+                            (event.metaKey || event.ctrlKey);
+
+                          if (isSaveShortcut) {
+                            event.preventDefault();
+                            void saveField();
+                            return;
+                          }
+
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            cancelFieldEditing();
+                          }
+                        }}
+                      />
+                    }
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'details',
+              label: 'Подробнее',
+              children: (
+                <ScenarioJsonEditor
+  scenarioId={scenario.id}
+  initialPayloadJson={scenario.scenarioPayloadJson}
+  disabled={isSavingField || isSavingVariable}
+  onSaved={(scenarioPayloadJson) => {
+    setScenario((currentScenario) =>
+      currentScenario
+        ? {
+            ...currentScenario,
+            scenarioPayloadJson,
           }
+        : currentScenario,
+    );
+  }}
+/>
+              ),
+            },
+          ]}
         />
       </div>
     </main>

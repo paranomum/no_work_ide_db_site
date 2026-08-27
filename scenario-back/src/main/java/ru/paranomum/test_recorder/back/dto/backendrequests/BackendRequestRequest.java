@@ -34,8 +34,6 @@ public record BackendRequestRequest(
 
 		String fieldOverridesJson,
 
-		String responseExtractorsJson,
-
-		String capturedAt
+		String responseExtractorsJson
 ) {
 }

@@ -45,15 +45,6 @@ public class BackendRequest {
 	@Column(name = "response_extractors_json", nullable = false)
 	private String responseExtractorsJson;
 
-	@Column(name = "captured_at")
-	private String capturedAt;
-
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private LocalDateTime createdAt;
-
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
-
 	protected BackendRequest() {
 	}
 
@@ -68,8 +59,7 @@ public class BackendRequest {
 			String bodyType,
 			String formDataJson,
 			String fieldOverridesJson,
-			String responseExtractorsJson,
-			String capturedAt
+			String responseExtractorsJson
 	) {
 		this.name = name;
 		this.url = url;
@@ -82,7 +72,6 @@ public class BackendRequest {
 		this.formDataJson = formDataJson;
 		this.fieldOverridesJson = fieldOverridesJson;
 		this.responseExtractorsJson = responseExtractorsJson;
-		this.capturedAt = capturedAt;
 	}
 
 	public Long getId() {
@@ -133,18 +122,6 @@ public class BackendRequest {
 		return responseExtractorsJson;
 	}
 
-	public String getCapturedAt() {
-		return capturedAt;
-	}
-
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
-	}
-
 	public void update(
 			String name,
 			String url,
@@ -156,8 +133,7 @@ public class BackendRequest {
 			String bodyType,
 			String formDataJson,
 			String fieldOverridesJson,
-			String responseExtractorsJson,
-			String capturedAt
+			String responseExtractorsJson
 	) {
 		this.name = name;
 		this.url = url;
@@ -170,6 +146,5 @@ public class BackendRequest {
 		this.formDataJson = formDataJson;
 		this.fieldOverridesJson = fieldOverridesJson;
 		this.responseExtractorsJson = responseExtractorsJson;
-		this.capturedAt = capturedAt;
 	}
 }

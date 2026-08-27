@@ -68,12 +68,6 @@ public class BackendRequestExportMapper {
 				)
 		);
 
-		putNullable(
-				result,
-				"capturedAt",
-				backendRequest.getCapturedAt()
-		);
-
 		return result;
 	}
 

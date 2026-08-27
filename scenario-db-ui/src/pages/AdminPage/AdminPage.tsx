@@ -2,11 +2,10 @@ import { AppInputPassword } from '../../shared/ui/AppInput/AppInputPassword';
 import { AppInput } from '../../shared/ui/AppInput/AppInput';
 import {
   ArrowLeftOutlined,
+  ClearOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
-  ReloadOutlined,
-  SaveOutlined,
   SearchOutlined,
   UserAddOutlined,
   UserOutlined,
@@ -15,6 +14,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Button,
   Card,
+  ColorPicker,
   Form,
   Input,
   Layout,
@@ -27,16 +27,18 @@ import {
   Typography,
   message,
 } from 'antd';
+import axios from 'axios';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
+import { http } from '../../shared/api/http';
 import styles from './AdminPage.module.css';
 
 const { Sider, Content } = Layout;
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 type AdminSection = 'tags' | 'users';
 
@@ -46,24 +48,44 @@ interface ScenarioTag {
   color: string;
 }
 
+interface TagResponse {
+  id: number;
+  name: string;
+  color: string;
+}
+
 interface PlatformUser {
   id: string;
   fullName: string;
   login: string;
-  password: string;
-  isReset: boolean;
 }
+
+interface UserResponse {
+  id: number;
+  name: string;
+  username: string;
+}
+
+const DEFAULT_TAG_COLOR = '#6B7280';
 
 const tagSchema = z.object({
   name: z.string().trim().min(1, 'Введите название тега'),
-  color: z.string().trim().min(1),
+  color: z.string().regex(
+    /^#[0-9A-Fa-f]{6}$/,
+    'Выберите корректный цвет',
+  ),
 });
 
-const userSchema = z
+const createUserSchema = z
   .object({
     fullName: z.string().trim().min(2, 'Введите ФИО'),
-    login: z.string().trim().min(3, 'Логин должен содержать минимум 3 символа'),
-    password: z.string().min(6, 'Пароль должен содержать минимум 6 символов'),
+    login: z
+      .string()
+      .trim()
+      .min(3, 'Логин должен содержать минимум 3 символа'),
+    password: z
+      .string()
+      .min(4, 'Пароль должен содержать минимум 4 символа'),
     confirmPassword: z.string(),
   })
   .superRefine((values, context) => {
@@ -76,39 +98,48 @@ const userSchema = z
     }
   });
 
+const editUserSchema = z
+  .object({
+    fullName: z.string().trim().min(2, 'Введите ФИО'),
+    login: z
+      .string()
+      .trim()
+      .min(3, 'Логин должен содержать минимум 3 символа'),
+    password: z.string(),
+    confirmPassword: z.string(),
+  })
+  .superRefine((values, context) => {
+    const passwordWasChanged = values.password.length > 0;
+    const confirmationWasChanged = values.confirmPassword.length > 0;
+
+    if (!passwordWasChanged && !confirmationWasChanged) {
+      return;
+    }
+
+    if (values.password.length < 4) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['password'],
+        message: 'Пароль должен содержать минимум 4 символа',
+      });
+    }
+
+    if (values.password !== values.confirmPassword) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmPassword'],
+        message: 'Пароли не совпадают',
+      });
+    }
+  });
+
 type TagFormValues = z.infer<typeof tagSchema>;
-type UserFormValues = z.infer<typeof userSchema>;
-
-const DEFAULT_TAGS: ScenarioTag[] = [
-  { id: 'tag-1', name: 'вакансия', color: 'blue' },
-  { id: 'tag-2', name: 'заявка', color: 'purple' },
-  { id: 'tag-3', name: 'оффер', color: 'green' },
-  { id: 'tag-4', name: 'кандидат', color: 'orange' },
-];
-
-const DEFAULT_USERS: PlatformUser[] = [
-  {
-    id: 'user-1',
-    fullName: 'Тестовый пользователь',
-    login: 'test',
-    password: 'test123',
-    isReset: false,
-  },
-];
-
-function readFromStorage<T>(key: string, fallback: T): T {
-  const savedValue = localStorage.getItem(key);
-
-  if (!savedValue) {
-    return fallback;
-  }
-
-  try {
-    return JSON.parse(savedValue) as T;
-  } catch {
-    return fallback;
-  }
-}
+type UserFormValues = {
+  fullName: string;
+  login: string;
+  password: string;
+  confirmPassword: string;
+};
 
 function createEmptyUser(): UserFormValues {
   return {
@@ -119,25 +150,64 @@ function createEmptyUser(): UserFormValues {
   };
 }
 
+function mapTagResponse(tag: TagResponse): ScenarioTag {
+  return {
+    id: String(tag.id),
+    name: tag.name,
+    color: tag.color,
+  };
+}
+
+function mapUserResponse(user: UserResponse): PlatformUser {
+  return {
+    id: String(user.id),
+    fullName: user.name,
+    login: user.username,
+  };
+}
+
+function getApiErrorMessage(
+  error: unknown,
+  defaultMessage: string,
+): string {
+  if (
+    axios.isAxiosError(error) &&
+    typeof error.response?.data?.message === 'string'
+  ) {
+    return error.response.data.message;
+  }
+
+  return defaultMessage;
+}
+
 export function AdminPage() {
   const navigate = useNavigate();
 
-  const [activeSection, setActiveSection] = useState<AdminSection>('tags');
-  const [tags, setTags] = useState<ScenarioTag[]>(() =>
-    readFromStorage('scenario-db.tags', DEFAULT_TAGS),
-  );
-  const [users, setUsers] = useState<PlatformUser[]>(() =>
-    readFromStorage('scenario-db.platform-users', DEFAULT_USERS),
-  );
+  const [activeSection, setActiveSection] =
+    useState<AdminSection>('tags');
+
+  const [tags, setTags] = useState<ScenarioTag[]>([]);
+  const [isTagsLoading, setIsTagsLoading] = useState(true);
+
+  const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [isUsersLoading, setIsUsersLoading] = useState(true);
 
   const [tagSearch, setTagSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
 
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
-  const [editingTag, setEditingTag] = useState<ScenarioTag | null>(null);
+  const [editingTag, setEditingTag] = useState<ScenarioTag | null>(
+    null,
+  );
+  const [isSavingTag, setIsSavingTag] = useState(false);
 
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<PlatformUser | null>(null);
+  const [editingUser, setEditingUser] =
+    useState<PlatformUser | null>(null);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [isResettingUserId, setIsResettingUserId] = useState<
+    string | null
+  >(null);
 
   const {
     control: tagControl,
@@ -148,7 +218,7 @@ export function AdminPage() {
     resolver: zodResolver(tagSchema),
     defaultValues: {
       name: '',
-      color: 'blue',
+      color: DEFAULT_TAG_COLOR,
     },
   });
 
@@ -158,20 +228,53 @@ export function AdminPage() {
     reset: resetUserForm,
     formState: { errors: userErrors },
   } = useForm<UserFormValues>({
-    resolver: zodResolver(userSchema),
     defaultValues: createEmptyUser(),
   });
 
-  useEffect(() => {
-    localStorage.setItem('scenario-db.tags', JSON.stringify(tags));
-  }, [tags]);
+  const loadTags = async () => {
+    try {
+      setIsTagsLoading(true);
+
+      const { data } = await http.get<TagResponse[]>('/tags');
+
+      setTags(data.map(mapTagResponse));
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(error, 'Не удалось загрузить список тегов'),
+      );
+    } finally {
+      setIsTagsLoading(false);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      setIsUsersLoading(true);
+
+      const { data } = await http.get<UserResponse[]>('/users');
+
+      setUsers(data.map(mapUserResponse));
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось загрузить список пользователей',
+        ),
+      );
+    } finally {
+      setIsUsersLoading(false);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem('scenario-db.platform-users', JSON.stringify(users));
-  }, [users]);
+    void loadTags();
+    void loadUsers();
+  }, []);
 
   const filteredTags = useMemo(() => {
-    const normalizedSearch = tagSearch.trim().toLocaleLowerCase('ru-RU');
+    const normalizedSearch = tagSearch
+      .trim()
+      .toLocaleLowerCase('ru-RU');
 
     if (!normalizedSearch) {
       return tags;
@@ -183,7 +286,9 @@ export function AdminPage() {
   }, [tagSearch, tags]);
 
   const filteredUsers = useMemo(() => {
-    const normalizedSearch = userSearch.trim().toLocaleLowerCase('ru-RU');
+    const normalizedSearch = userSearch
+      .trim()
+      .toLocaleLowerCase('ru-RU');
 
     if (!normalizedSearch) {
       return users;
@@ -200,7 +305,7 @@ export function AdminPage() {
     setEditingTag(null);
     resetTagForm({
       name: '',
-      color: 'blue',
+      color: DEFAULT_TAG_COLOR,
     });
     setIsTagModalOpen(true);
   };
@@ -219,61 +324,66 @@ export function AdminPage() {
     setEditingTag(null);
     resetTagForm({
       name: '',
-      color: 'blue',
+      color: DEFAULT_TAG_COLOR,
     });
   };
 
-  const saveTag = (values: TagFormValues) => {
+  const saveTag = async (values: TagFormValues) => {
     const normalizedName = values.name.trim();
 
-    const duplicateTagExists = tags.some(
-      (tag) =>
-        tag.name.toLocaleLowerCase('ru-RU') ===
-          normalizedName.toLocaleLowerCase('ru-RU') &&
-        tag.id !== editingTag?.id,
-    );
+    try {
+      setIsSavingTag(true);
 
-    if (duplicateTagExists) {
-      message.error('Тег с таким названием уже существует');
-      return;
-    }
-
-    if (editingTag) {
-      setTags((currentTags) =>
-        currentTags.map((tag) =>
-          tag.id === editingTag.id
-            ? {
-                ...tag,
-                name: normalizedName,
-                color: values.color,
-              }
-            : tag,
-        ),
-      );
-
-      message.success('Тег сохранён');
-    } else {
-      setTags((currentTags) => [
-        ...currentTags,
-        {
-          id: crypto.randomUUID(),
+      if (editingTag) {
+        await http.put(`/tags/${editingTag.id}`, {
           name: normalizedName,
           color: values.color,
-        },
-      ]);
+        });
 
-      message.success('Тег добавлен');
+        message.success('Тег сохранён');
+      } else {
+        await http.post('/tags', {
+          name: normalizedName,
+          color: values.color,
+        });
+
+        message.success('Тег добавлен');
+      }
+
+      closeTagModal();
+      await loadTags();
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        message.error('Тег с таким названием уже существует');
+        return;
+      }
+
+      message.error(
+        getApiErrorMessage(error, 'Не удалось сохранить тег'),
+      );
+    } finally {
+      setIsSavingTag(false);
     }
-
-    closeTagModal();
   };
 
-  const deleteTag = (tagId: string) => {
-    setTags((currentTags) =>
-      currentTags.filter((tag) => tag.id !== tagId),
-    );
+  const deleteTag = async (tagId: string) => {
+    try {
+      await http.delete(`/tags/${tagId}`);
 
-    message.success('Тег удалён');
+      message.success('Тег удалён');
+      await loadTags();
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        message.error(
+          'Тег нельзя удалить, пока он используется в сценариях',
+        );
+        return;
+      }
+
+      message.error(
+        getApiErrorMessage(error, 'Не удалось удалить тег'),
+      );
+    }
   };
 
   const openCreateUserModal = () => {
@@ -287,8 +397,8 @@ export function AdminPage() {
     resetUserForm({
       fullName: user.fullName,
       login: user.login,
-      password: user.password,
-      confirmPassword: user.password,
+      password: '',
+      confirmPassword: '',
     });
     setIsUserModalOpen(true);
   };
@@ -299,71 +409,85 @@ export function AdminPage() {
     resetUserForm(createEmptyUser());
   };
 
-  const saveUser = (values: UserFormValues) => {
-    const normalizedLogin = values.login.trim();
+  const saveUser = async (values: UserFormValues) => {
+    const normalizedName = values.fullName.trim();
+    const normalizedUsername = values.login.trim();
 
-    const duplicateLoginExists = users.some(
-      (user) =>
-        user.login.toLocaleLowerCase('ru-RU') ===
-          normalizedLogin.toLocaleLowerCase('ru-RU') &&
-        user.id !== editingUser?.id,
-    );
+    const schema = editingUser ? editUserSchema : createUserSchema;
+    const validationResult = schema.safeParse(values);
 
-    if (duplicateLoginExists) {
-      message.error('Пользователь с таким логином уже существует');
+    if (!validationResult.success) {
+      const firstIssue = validationResult.error.issues[0];
+
+      if (firstIssue) {
+        message.error(firstIssue.message);
+      }
+
       return;
     }
 
-    if (editingUser) {
-      setUsers((currentUsers) =>
-        currentUsers.map((user) =>
-          user.id === editingUser.id
-            ? {
-                ...user,
-                fullName: values.fullName.trim(),
-                login: normalizedLogin,
-                password: values.password,
-                isReset: false,
-              }
-            : user,
+    try {
+      setIsSavingUser(true);
+
+      if (editingUser) {
+        await http.put(`/users/${editingUser.id}`, {
+          name: normalizedName,
+          username: normalizedUsername,
+        });
+
+        if (values.password.length > 0) {
+          await http.put(`/users/${editingUser.id}/password`, {
+            password: values.password,
+          });
+        }
+
+        message.success('Данные пользователя сохранены');
+      } else {
+        await http.post('/users', {
+          name: normalizedName,
+          username: normalizedUsername,
+          password: values.password,
+        });
+
+        message.success('Пользователь добавлен');
+      }
+
+      closeUserModal();
+      await loadUsers();
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        message.error('Пользователь с таким логином уже существует');
+        return;
+      }
+
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось сохранить данные пользователя',
         ),
       );
-
-      message.success('Данные пользователя сохранены');
-    } else {
-      setUsers((currentUsers) => [
-        ...currentUsers,
-        {
-          id: crypto.randomUUID(),
-          fullName: values.fullName.trim(),
-          login: normalizedLogin,
-          password: values.password,
-          isReset: false,
-        },
-      ]);
-
-      message.success('Пользователь добавлен');
+    } finally {
+      setIsSavingUser(false);
     }
-
-    closeUserModal();
   };
 
-  const resetUser = (userId: string) => {
-    setUsers((currentUsers) =>
-      currentUsers.map((user) =>
-        user.id === userId
-          ? {
-              ...user,
-              fullName: '',
-              login: '',
-              password: '',
-              isReset: true,
-            }
-          : user,
-      ),
-    );
+  const resetUserVariables = async (userId: string) => {
+    try {
+      setIsResettingUserId(userId);
 
-    message.success('Данные пользователя очищены');
+      await http.post(`/users/${userId}/reset`);
+
+      message.success('Персональные переменные пользователя очищены');
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось очистить персональные переменные пользователя',
+        ),
+      );
+    } finally {
+      setIsResettingUserId(null);
+    }
   };
 
   const tagColumns: ColumnsType<ScenarioTag> = [
@@ -395,7 +519,7 @@ export function AdminPage() {
             okText="Удалить"
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
-            onConfirm={() => deleteTag(tag.id)}
+            onConfirm={() => void deleteTag(tag.id)}
           >
             <Button
               type="text"
@@ -414,26 +538,16 @@ export function AdminPage() {
       title: 'ФИО',
       dataIndex: 'fullName',
       key: 'fullName',
-      render: (fullName: string, user) =>
-        user.isReset ? (
-          <Text type="secondary">Данные очищены</Text>
-        ) : (
-          fullName
-        ),
     },
     {
       title: 'Логин',
       dataIndex: 'login',
       key: 'login',
-      render: (login: string) =>
-        login || <Text type="secondary">Не задан</Text>,
     },
     {
       title: 'Пароль',
-      dataIndex: 'password',
       key: 'password',
-      render: (password: string) =>
-        password ? '••••••••' : <Text type="secondary">Не задан</Text>,
+      render: () => '••••••••',
     },
     {
       title: '',
@@ -450,18 +564,19 @@ export function AdminPage() {
           />
 
           <Popconfirm
-            title="Сбросить пользователя?"
-            description="ФИО, логин и пароль будут очищены. Сам пользователь останется в системе."
-            okText="Сбросить"
+            title="Очистить персональные переменные?"
+            description={`У пользователя «${user.login}» будут удалены сохранённые значения всех персональных переменных. ФИО, логин и пароль не изменятся.`}
+            okText="Очистить"
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
-            onConfirm={() => resetUser(user.id)}
+            onConfirm={() => void resetUserVariables(user.id)}
           >
             <Button
               type="text"
               danger
-              icon={<ReloadOutlined />}
-              aria-label="Сбросить данные пользователя"
+              icon={<ClearOutlined />}
+              loading={isResettingUserId === user.id}
+              aria-label={`Очистить переменные пользователя ${user.login}`}
             />
           </Popconfirm>
         </Space>
@@ -528,19 +643,20 @@ export function AdminPage() {
               }
             >
               <AppInput
-  allowClear
-  size="large"
-  prefix={<SearchOutlined />}
-  placeholder="Поиск по тегам"
-  value={tagSearch}
-  onChange={(event) => setTagSearch(event.target.value)}
-/>
+                allowClear
+                size="large"
+                prefix={<SearchOutlined />}
+                placeholder="Поиск по тегам"
+                value={tagSearch}
+                onChange={(event) => setTagSearch(event.target.value)}
+              />
 
               <Table<ScenarioTag>
                 className={styles.table}
                 rowKey="id"
                 columns={tagColumns}
                 dataSource={filteredTags}
+                loading={isTagsLoading}
                 pagination={{
                   pageSize: 10,
                   showSizeChanger: false,
@@ -566,19 +682,20 @@ export function AdminPage() {
               }
             >
               <AppInput
-  allowClear
-  size="large"
-  prefix={<SearchOutlined />}
-  placeholder="Поиск по ФИО или логину"
-  value={userSearch}
-  onChange={(event) => setUserSearch(event.target.value)}
-/>
+                allowClear
+                size="large"
+                prefix={<SearchOutlined />}
+                placeholder="Поиск по ФИО или логину"
+                value={userSearch}
+                onChange={(event) => setUserSearch(event.target.value)}
+              />
 
               <Table<PlatformUser>
                 className={styles.table}
                 rowKey="id"
                 columns={userColumns}
                 dataSource={filteredUsers}
+                loading={isUsersLoading}
                 pagination={{
                   pageSize: 10,
                   showSizeChanger: false,
@@ -597,8 +714,9 @@ export function AdminPage() {
         open={isTagModalOpen}
         okText={editingTag ? 'Сохранить' : 'Добавить'}
         cancelText="Отмена"
+        confirmLoading={isSavingTag}
         onCancel={closeTagModal}
-        onOk={handleTagSubmit(saveTag)}
+        onOk={() => void handleTagSubmit(saveTag)()}
         destroyOnHidden
       >
         <Form layout="vertical" requiredMark={false}>
@@ -611,30 +729,49 @@ export function AdminPage() {
               name="name"
               control={tagControl}
               render={({ field }) => (
-                <Input {...field} autoFocus placeholder="Например, вакансия" />
+                <Input
+                  {...field}
+                  autoFocus
+                  placeholder="Например, вакансия"
+                />
               )}
             />
           </Form.Item>
 
-          <Form.Item label="Цвет">
-            <Controller
-              name="color"
-              control={tagControl}
-              render={({ field }) => (
-                <Input {...field} placeholder="blue, green, orange..." />
-              )}
-            />
-          </Form.Item>
+          <Form.Item
+  label="Цвет"
+  validateStatus={tagErrors.color ? 'error' : ''}
+  help={tagErrors.color?.message}
+>
+  <Controller
+    name="color"
+    control={tagControl}
+    render={({ field }) => (
+      <ColorPicker
+        value={field.value}
+        onChange={(color) => {
+          field.onChange(color.toHexString());
+        }}
+        showText
+      />
+    )}
+  />
+</Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={editingUser ? 'Редактирование пользователя' : 'Новый пользователь'}
+        title={
+          editingUser
+            ? 'Редактирование пользователя'
+            : 'Новый пользователь'
+        }
         open={isUserModalOpen}
         okText={editingUser ? 'Сохранить' : 'Добавить'}
         cancelText="Отмена"
+        confirmLoading={isSavingUser}
         onCancel={closeUserModal}
-        onOk={handleUserSubmit(saveUser)}
+        onOk={() => void handleUserSubmit(saveUser)()}
         destroyOnHidden
       >
         <Form layout="vertical" requiredMark={false}>
@@ -647,7 +784,11 @@ export function AdminPage() {
               name="fullName"
               control={userControl}
               render={({ field }) => (
-                <Input {...field} autoFocus placeholder="Иванов Иван Иванович" />
+                <Input
+                  {...field}
+                  autoFocus
+                  placeholder="Иванов Иван Иванович"
+                />
               )}
             />
           </Form.Item>
@@ -665,7 +806,12 @@ export function AdminPage() {
           </Form.Item>
 
           <Form.Item
-            label="Пароль"
+            label={editingUser ? 'Новый пароль' : 'Пароль'}
+            extra={
+              editingUser
+                ? 'Оставьте оба поля пустыми, если пароль менять не нужно.'
+                : undefined
+            }
             validateStatus={userErrors.password ? 'error' : ''}
             help={userErrors.password?.message}
           >
@@ -674,16 +820,22 @@ export function AdminPage() {
               control={userControl}
               render={({ field }) => (
                 <AppInputPassword
-  {...field}
-  autoComplete="new-password"
-/>
+                  {...field}
+                  autoComplete="new-password"
+                />
               )}
             />
           </Form.Item>
 
           <Form.Item
-            label="Повторите пароль"
-            validateStatus={userErrors.confirmPassword ? 'error' : ''}
+            label={
+              editingUser
+                ? 'Повторите новый пароль'
+                : 'Повторите пароль'
+            }
+            validateStatus={
+              userErrors.confirmPassword ? 'error' : ''
+            }
             help={userErrors.confirmPassword?.message}
           >
             <Controller
@@ -691,9 +843,9 @@ export function AdminPage() {
               control={userControl}
               render={({ field }) => (
                 <AppInputPassword
-  {...field}
-  autoComplete="new-password"
-/>
+                  {...field}
+                  autoComplete="new-password"
+                />
               )}
             />
           </Form.Item>

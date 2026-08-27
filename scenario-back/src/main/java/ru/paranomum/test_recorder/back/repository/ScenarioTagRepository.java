@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import ru.paranomum.test_recorder.back.entity.ScenarioTag;
 import ru.paranomum.test_recorder.back.entity.ScenarioTagId;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ScenarioTagRepository
@@ -16,4 +17,6 @@ public interface ScenarioTagRepository
 	void deleteByScenarioIdAndTagId(Long scenarioId, Long tagId);
 
 	void deleteAllByScenarioId(Long scenarioId);
+
+	List<ScenarioTag> findAllByScenarioIdIn(Collection<Long> scenarioIds);
 }

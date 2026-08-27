@@ -14,5 +14,9 @@ public interface ScenarioBackendRequestRepository
 
 	List<ScenarioBackendRequest> findAllByScenarioId(Long scenarioId);
 
+	List<ScenarioBackendRequest> findAllByBackendRequestId(
+			Long backendRequestId
+	);
+
 	void deleteAllByScenarioId(Long scenarioId);
 }

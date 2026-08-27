@@ -26,6 +26,63 @@ public class UserController {
 		this.userService = userService;
 	}
 
+	@GetMapping("/me")
+	public UserResponse getMe(
+			@AuthenticationPrincipal CustomUserDetails currentUser
+	) {
+		return userService.getById(currentUser.getUserId());
+	}
+
+	@PutMapping("/me")
+	public UserResponse updateMe(
+			@AuthenticationPrincipal CustomUserDetails currentUser,
+			@Valid @RequestBody UserUpdateRequest request
+	) {
+		return userService.update(currentUser.getUserId(), request);
+	}
+
+	@PutMapping("/me/password")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateMyPassword(
+			@AuthenticationPrincipal CustomUserDetails currentUser,
+			@Valid @RequestBody UserPasswordRequest request
+	) {
+		userService.updatePassword(currentUser.getUserId(), request);
+	}
+
+	@GetMapping("/me/variables")
+	public List<UserVariableResponse> getMyVariables(
+			@AuthenticationPrincipal CustomUserDetails currentUser
+	) {
+		return userService.getVariables(currentUser.getUserId());
+	}
+
+	@PutMapping("/me/variables/{variableId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void setMyVariable(
+			@AuthenticationPrincipal CustomUserDetails currentUser,
+			@PathVariable Long variableId,
+			@Valid @RequestBody UserVariableRequest request
+	) {
+		userService.setVariable(
+				currentUser.getUserId(),
+				variableId,
+				request
+		);
+	}
+
+	@DeleteMapping("/me/variables/{variableId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteMyVariable(
+			@AuthenticationPrincipal CustomUserDetails currentUser,
+			@PathVariable Long variableId
+	) {
+		userService.deleteVariable(
+				currentUser.getUserId(),
+				variableId
+		);
+	}
+
 	@GetMapping
 	public List<UserResponse> getAll(
 			@RequestParam(required = false) String query
@@ -63,66 +120,9 @@ public class UserController {
 		userService.updatePassword(id, request);
 	}
 
-	@GetMapping("/me/variables")
-	public List<UserVariableResponse> getMyVariables(
-			@AuthenticationPrincipal CustomUserDetails currentUser
-	) {
-		return userService.getVariables(currentUser.getUserId());
-	}
-
-	@PutMapping("/me/variables/{variableId}")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void setMyVariable(
-			@AuthenticationPrincipal CustomUserDetails currentUser,
-			@PathVariable Long variableId,
-			@Valid @RequestBody UserVariableRequest request
-	) {
-		userService.setVariable(
-				currentUser.getUserId(),
-				variableId,
-				request
-		);
-	}
-
-	@DeleteMapping("/me/variables/{variableId}")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void deleteMyVariable(
-			@AuthenticationPrincipal CustomUserDetails currentUser,
-			@PathVariable Long variableId
-	) {
-		userService.deleteVariable(
-				currentUser.getUserId(),
-				variableId
-		);
-	}
-
 	@PostMapping("/{userId}/reset")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void resetAccount(@PathVariable Long userId) {
 		userService.resetAccount(userId);
-	}
-
-	@GetMapping("/me")
-	public UserResponse getMe(
-			@AuthenticationPrincipal CustomUserDetails currentUser
-	) {
-		return userService.getById(currentUser.getUserId());
-	}
-
-	@PutMapping("/me")
-	public UserResponse updateMe(
-			@AuthenticationPrincipal CustomUserDetails currentUser,
-			@Valid @RequestBody UserUpdateRequest request
-	) {
-		return userService.update(currentUser.getUserId(), request);
-	}
-
-	@PutMapping("/me/password")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void updateMyPassword(
-			@AuthenticationPrincipal CustomUserDetails currentUser,
-			@Valid @RequestBody UserPasswordRequest request
-	) {
-		userService.updatePassword(currentUser.getUserId(), request);
 	}
 }

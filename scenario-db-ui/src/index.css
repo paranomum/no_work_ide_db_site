@@ -109,3 +109,21 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.backendDiffLineDifferent {
+  display: block;
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.backendDiffLineOnlyLeft {
+  display: block;
+  background: #fff7e6;
+  color: #ad6800;
+}
+
+.backendDiffLineOnlyRight {
+  display: block;
+  background: #f6ffed;
+  color: #389e0d;
+}

@@ -2,117 +2,96 @@ import {
   FileAddOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Empty, Typography, message } from 'antd';
+import {
+  Button,
+  Card,
+  Empty,
+  Spin,
+  Typography,
+  message,
+} from 'antd';
+import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Virtuoso } from 'react-virtuoso';
 
+import { http } from '../../shared/api/http';
+import type {
+  ScenarioListItem,
+  ScenarioResponse,
+} from '../../shared/types/scenario';
 import { AppInput } from '../../shared/ui/AppInput/AppInput';
-import {
-  ScenarioItem,
-} from '../../shared/ui/ScenarioItem/ScenarioItem';
-import type { ScenarioListItem } from '../../shared/types/scenario';
+import { ScenarioItem } from '../../shared/ui/ScenarioItem/ScenarioItem';
 import styles from './ScenarioListPage.module.css';
 
 const { Title, Text } = Typography;
 
-const DEFAULT_SCENARIOS: ScenarioListItem[] = [
-  {
-    id: 'scenario-1',
-    name: 'Обработка кандидата: массовый подбор',
-    tags: ['вакансия', 'заявка', 'кандидат'],
-  },
-  {
-    id: 'scenario-2',
-    name: 'Создание вакансии',
-    tags: ['вакансия'],
-  },
-  {
-    id: 'scenario-3',
-    name: 'Создание и согласование заявки',
-    tags: ['заявка', 'согласование'],
-  },
-  {
-    id: 'scenario-4',
-    name: 'Оформление оффера',
-    tags: ['оффер', 'кандидат'],
-  },
-  {
-    id: 'scenario-5',
-    name: 'Перевод кандидата на этап воронки',
-    tags: ['кандидат', 'воронка'],
-  },
-];
-
-function getStoredScenarios(): ScenarioListItem[] {
-  const storedScenarios = localStorage.getItem('scenario-db.scenarios');
-
-  if (!storedScenarios) {
-    return DEFAULT_SCENARIOS;
-  }
-
-  try {
-    const parsedScenarios = JSON.parse(
-      storedScenarios,
-    ) as ScenarioListItem[];
-
-    if (!Array.isArray(parsedScenarios) || parsedScenarios.length === 0) {
-      return DEFAULT_SCENARIOS;
-    }
-
-    return parsedScenarios;
-  } catch {
-    return DEFAULT_SCENARIOS;
-  }
+function mapScenarioToListItem(
+  scenario: ScenarioResponse,
+): ScenarioListItem {
+  return {
+    id: String(scenario.id),
+    name: scenario.name,
+    tags: scenario.tags.map((tag) => tag.name),
+  };
 }
 
-function downloadMockFile(
-  scenario: ScenarioListItem,
-  includeRelated: boolean,
-) {
-  const fileContent = {
-    id: scenario.id,
-    name: scenario.name,
-    tags: scenario.tags,
-    includeRelated,
-    message:
-      'Mock-экспорт. Подстановка значений переменных профиля и обработка связанных сценариев будет реализована backend-ом.',
-  };
+function getDownloadFileName(
+  contentDisposition: string | undefined,
+  fallbackName: string,
+): string {
+  const fileNameMatch = contentDisposition?.match(
+    /filename="([^"]+)"/i,
+  );
 
-  const blob = new Blob([JSON.stringify(fileContent, null, 2)], {
-    type: 'application/json;charset=utf-8',
-  });
+  return fileNameMatch?.[1] ?? fallbackName;
+}
 
-  const url = URL.createObjectURL(blob);
+function getApiErrorMessage(
+  error: unknown,
+  defaultMessage: string,
+): string {
+  if (
+    axios.isAxiosError(error) &&
+    typeof error.response?.data?.message === 'string'
+  ) {
+    return error.response.data.message;
+  }
 
-  const fileName = `${scenario.name
-    .toLocaleLowerCase('ru-RU')
-    .replace(/[^a-zа-яё0-9]+/gi, '-')
-    .replace(/^-|-$/g, '')}${includeRelated ? '' : '-без-связанных'}.json`;
-
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  URL.revokeObjectURL(url);
+  return defaultMessage;
 }
 
 export function ScenarioListPage() {
   const navigate = useNavigate();
 
   const [searchValue, setSearchValue] = useState('');
-  const [scenarios, setScenarios] =
-    useState<ScenarioListItem[]>(getStoredScenarios);
+  const [scenarios, setScenarios] = useState<ScenarioListItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const loadScenarios = async () => {
+    try {
+      setIsLoading(true);
+      setErrorText(null);
+
+      const { data } = await http.get<ScenarioResponse[]>('/scenarios');
+
+      setScenarios(data.map(mapScenarioToListItem));
+    } catch (error) {
+      setErrorText(
+        getApiErrorMessage(
+          error,
+          'Не удалось загрузить список сценариев.',
+        ),
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem(
-      'scenario-db.scenarios',
-      JSON.stringify(scenarios),
-    );
-  }, [scenarios]);
+    void loadScenarios();
+  }, []);
 
   const filteredScenarios = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLocaleLowerCase('ru-RU');
@@ -122,10 +101,7 @@ export function ScenarioListPage() {
     }
 
     return scenarios.filter((scenario) => {
-      const searchableValue = [
-        scenario.name,
-        ...scenario.tags,
-      ]
+      const searchableValue = [scenario.name, ...scenario.tags]
         .join(' ')
         .toLocaleLowerCase('ru-RU');
 
@@ -141,87 +117,167 @@ export function ScenarioListPage() {
     navigate(`/scenarios/${scenarioId}`);
   };
 
-  const downloadScenario = (scenarioId: string) => {
-    const scenario = scenarios.find((item) => item.id === scenarioId);
-
-    if (!scenario) {
-      message.error('Сценарий не найден');
-      return;
-    }
-
-    downloadMockFile(scenario, true);
-    message.success('Сценарий скачан');
-  };
-
-  const downloadScenarioWithoutRelated = (scenarioId: string) => {
-    const scenario = scenarios.find((item) => item.id === scenarioId);
-
-    if (!scenario) {
-      message.error('Сценарий не найден');
-      return;
-    }
-
-    downloadMockFile(scenario, false);
-    message.success('Сценарий без связанных сценариев скачан');
-  };
-
-  const deleteScenario = (scenarioId: string) => {
-    setScenarios((currentScenarios) =>
-      currentScenarios.filter((scenario) => scenario.id !== scenarioId),
-    );
-
-    message.success('Сценарий удалён');
-  };
-
   const createScenario = () => {
-    message.info(
-      'Создание сценария будет добавлено вместе со страницей сценария',
+    navigate('/scenarios/new');
+  };
+
+  const downloadFile = async (
+  scenarioId: string,
+  endpoint: 'download-original' | 'download-full' | 'download-zip',
+  fallbackName: string,
+  successMessage: string,
+) => {
+  const scenario = scenarios.find((item) => item.id === scenarioId);
+
+  if (!scenario) {
+    message.error('Сценарий не найден');
+    return;
+  }
+
+  try {
+    const response = await http.get(
+      `/scenarios/${scenarioId}/${endpoint}`,
+      {
+        responseType: 'blob',
+      },
     );
+
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = getDownloadFileName(
+      response.headers['content-disposition'],
+      fallbackName,
+    );
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+
+    message.success(successMessage);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      message.error('Сценарий не найден');
+      return;
+    }
+
+    message.error(
+      getApiErrorMessage(error, 'Не удалось скачать сценарий'),
+    );
+  }
+};
+
+const downloadScenarioOriginal = async (scenarioId: string) => {
+  const scenario = scenarios.find((item) => item.id === scenarioId);
+
+  await downloadFile(
+    scenarioId,
+    'download-original',
+    `${scenario?.name ?? 'scenario'}-original.json`,
+    'Исходный JSON сценария скачан',
+  );
+};
+
+const downloadScenarioFull = async (scenarioId: string) => {
+  const scenario = scenarios.find((item) => item.id === scenarioId);
+
+  await downloadFile(
+    scenarioId,
+    'download-full',
+    `${scenario?.name ?? 'scenario'}-full.json`,
+    'Развёрнутый сценарий скачан',
+  );
+};
+
+const downloadScenarioZip = async (scenarioId: string) => {
+  const scenario = scenarios.find((item) => item.id === scenarioId);
+
+  await downloadFile(
+    scenarioId,
+    'download-zip',
+    `${scenario?.name ?? 'scenario'}-related.zip`,
+    'ZIP-архив сценариев скачан',
+  );
+};
+
+  const deleteScenario = async (scenarioId: string) => {
+    try {
+      await http.delete(`/scenarios/${scenarioId}`);
+
+      setScenarios((currentScenarios) =>
+        currentScenarios.filter((scenario) => scenario.id !== scenarioId),
+      );
+
+      message.success('Сценарий удалён');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        message.error('Сценарий уже удалён');
+        await loadScenarios();
+        return;
+      }
+
+      message.error(
+        getApiErrorMessage(error, 'Не удалось удалить сценарий'),
+      );
+
+      throw error;
+    }
   };
 
   return (
     <main className={styles.page}>
-  		<div className={styles.content}>
+      <div className={styles.content}>
         <div className={styles.header}>
-  <div>
-    <Title level={2} className={styles.title}>
-      Сценарии
-    </Title>
+          <div>
+            <Title level={2} className={styles.title}>
+              Сценарии
+            </Title>
 
-    <Text type="secondary">
-      Поиск, просмотр и скачивание сценариев прогона
-    </Text>
-  </div>
-</div>
+            <Text type="secondary">
+              Поиск, просмотр и скачивание сценариев прогона
+            </Text>
+          </div>
+        </div>
 
-<div className={styles.searchRow}>
-  <AppInput
-    allowClear
-    size="large"
-    prefix={<SearchOutlined />}
-    placeholder="Поиск по названию или тегам"
-    value={searchValue}
-    onChange={(event) => setSearchValue(event.target.value)}
-  />
+        <div className={styles.searchRow}>
+          <AppInput
+            allowClear
+            size="large"
+            prefix={<SearchOutlined />}
+            placeholder="Поиск по названию или тегам"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+          />
 
-  <Button
-    type="primary"
-    size="large"
-    icon={<FileAddOutlined />}
-    onClick={createScenario}
-  >
-    Новый сценарий
-  </Button>
-</div>
+          <Button
+            type="primary"
+            size="large"
+            icon={<FileAddOutlined />}
+            onClick={createScenario}
+          >
+            Новый сценарий
+          </Button>
+        </div>
 
-		<Text type="secondary" className={styles.counter}>
-  Найдено сценариев: {filteredScenarios.length}
-</Text>
+        <Text type="secondary" className={styles.counter}>
+          Найдено сценариев: {filteredScenarios.length}
+        </Text>
 
-        <Card
-          className={styles.listCard}
-        >
-          {filteredScenarios.length === 0 ? (
+        <Card className={styles.listCard}>
+          {isLoading ? (
+            <div className={styles.empty}>
+              <Spin />
+            </div>
+          ) : errorText ? (
+            <Empty
+              className={styles.empty}
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={errorText}
+            />
+          ) : filteredScenarios.length === 0 ? (
             <Empty
               className={styles.empty}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -238,20 +294,19 @@ export function ScenarioListPage() {
               computeItemKey={(_, scenario) => scenario.id}
               itemContent={(_, scenario) => (
                 <ScenarioItem
-                  scenario={scenario}
-                  onOpen={openScenario}
-                  onEdit={editScenario}
-                  onDownload={downloadScenario}
-                  onDownloadWithoutRelated={
-                    downloadScenarioWithoutRelated
-                  }
-                  onDelete={deleteScenario}
-                />
+  scenario={scenario}
+  onOpen={openScenario}
+  onEdit={editScenario}
+  onDownloadOriginal={downloadScenarioOriginal}
+  onDownloadFull={downloadScenarioFull}
+  onDownloadZip={downloadScenarioZip}
+  onDelete={deleteScenario}
+/>
               )}
             />
           )}
         </Card>
-       </div>
+      </div>
     </main>
   );
 }

@@ -243,9 +243,7 @@ public class UserService {
 		return new UserResponse(
 				user.getId(),
 				user.getName(),
-				user.getUsername(),
-				user.getCreatedAt(),
-				user.getUpdatedAt()
+				user.getUsername()
 		);
 	}
 }
