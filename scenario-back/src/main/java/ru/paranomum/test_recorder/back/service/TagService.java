@@ -43,6 +43,7 @@ public class TagService {
 	@Transactional
 	public TagResponse create(TagRequest request) {
 		String name = normalizeName(request.name());
+		String color = normalizeColor(request.color());
 
 		if (tagRepository.existsByNameIgnoreCase(name)) {
 			throw new TagAlreadyExistsException(name);
@@ -50,7 +51,7 @@ public class TagService {
 
 		try {
 			Tag tag = tagRepository.save(
-					new Tag(name, DEFAULT_TAG_COLOR)
+					new Tag(name, color)
 			);
 
 			return toResponse(tag);
@@ -105,5 +106,13 @@ public class TagService {
 				tag.getName(),
 				tag.getColor()
 		);
+	}
+
+	private String normalizeColor(String color) {
+		if (color == null || color.isBlank()) {
+			return DEFAULT_TAG_COLOR;
+		}
+
+		return color.trim().toUpperCase();
 	}
 }

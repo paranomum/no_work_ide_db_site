@@ -168,6 +168,23 @@ public class ScenarioImportService {
 			String importedName = normalizeName(imported.name());
 			String importedKey = normalizeKey(importedName);
 
+			if (imported.isUserVariable()) {
+				if (imported.defaultValue() != null
+						&& !imported.defaultValue().isBlank()) {
+					throw new IllegalArgumentException(
+							"Значение пользовательской переменной должно быть пустым: "
+									+ importedName
+					);
+				}
+			} else if (
+					imported.defaultValue() == null ||
+							imported.defaultValue().isBlank()
+			) {
+				throw new IllegalArgumentException(
+						"Значение сценарной переменной обязательно: " + importedName
+				);
+			}
+
 			if (result.containsKey(importedKey)) {
 				throw new IllegalArgumentException(
 						"Переменная указана в import resolution несколько раз: "
@@ -175,33 +192,60 @@ public class ScenarioImportService {
 				);
 			}
 
-			Variable variable = switch (resolution.kind()) {
-				case "existing", "selected-existing" -> {
-					if (resolution.targetVariableId() == null) {
-						throw new IllegalArgumentException(
-								"targetVariableId обязателен для existing variable"
-						);
-					}
+			Variable variable;
 
-					yield findVariable(resolution.targetVariableId());
+			/*
+			 * Сценарная переменная создаётся в каталоге при импорте.
+			 * targetVariableId для неё не передаётся и не требуется.
+			 */
+			if (!imported.isUserVariable()) {
+				if (resolution.targetVariableId() != null) {
+					throw new IllegalArgumentException(
+							"targetVariableId не должен передаваться "
+									+ "для сценарной переменной"
+					);
 				}
 
-				case "create-new-user" -> {
-					if (resolution.targetVariableId() != null) {
-						throw new IllegalArgumentException(
-								"targetVariableId должен отсутствовать "
-										+ "для create-new-user"
-						);
+				variable = createScenarioVariable(imported);
+			} else {
+				variable = switch (resolution.kind()) {
+					case "existing", "selected-existing" -> {
+						if (resolution.targetVariableId() == null) {
+							throw new IllegalArgumentException(
+									"targetVariableId обязателен для существующей "
+											+ "пользовательской переменной"
+							);
+						}
+
+						Variable existingVariable =
+								findVariable(resolution.targetVariableId());
+
+						if (!existingVariable.isUserVariable()) {
+							throw new IllegalArgumentException(
+									"Выбрана не пользовательская переменная"
+							);
+						}
+
+						yield existingVariable;
 					}
 
-					yield createVariable(imported);
-				}
+					case "create-new-user" -> {
+						if (resolution.targetVariableId() != null) {
+							throw new IllegalArgumentException(
+									"targetVariableId должен отсутствовать "
+											+ "для create-new-user"
+							);
+						}
 
-				default -> throw new IllegalArgumentException(
-						"Неподдерживаемый kind variable resolution: "
-								+ resolution.kind()
-				);
-			};
+						yield createVariable(imported);
+					}
+
+					default -> throw new IllegalArgumentException(
+							"Неподдерживаемый kind variable resolution: "
+									+ resolution.kind()
+					);
+				};
+			}
 
 			result.put(
 					importedKey,
@@ -230,6 +274,34 @@ public class ScenarioImportService {
 							name,
 							normalizeDescription(request.description()),
 							request.isUserVariable()
+					)
+			);
+		} catch (org.springframework.dao.DataIntegrityViolationException exception) {
+			throw new VariableAlreadyExistsException(name);
+		}
+	}
+
+	private Variable createScenarioVariable(
+			ScenarioImportVariableRequest request
+	) {
+		String name = normalizeName(request.name());
+
+		if (request.isUserVariable()) {
+			throw new IllegalArgumentException(
+					"Ожидалась сценарная переменная"
+			);
+		}
+
+		if (variableRepository.existsByNameIgnoreCase(name)) {
+			throw new VariableAlreadyExistsException(name);
+		}
+
+		try {
+			return variableRepository.save(
+					new Variable(
+							name,
+							normalizeDescription(request.description()),
+							false
 					)
 			);
 		} catch (org.springframework.dao.DataIntegrityViolationException exception) {

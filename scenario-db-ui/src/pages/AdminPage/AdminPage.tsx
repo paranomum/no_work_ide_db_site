@@ -201,6 +201,9 @@ export function AdminPage() {
   );
   const [isSavingTag, setIsSavingTag] = useState(false);
 
+  const [selectedTagColor, setSelectedTagColor] =
+  useState(DEFAULT_TAG_COLOR);
+
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] =
     useState<PlatformUser | null>(null);
@@ -210,17 +213,18 @@ export function AdminPage() {
   >(null);
 
   const {
-    control: tagControl,
-    handleSubmit: handleTagSubmit,
-    reset: resetTagForm,
-    formState: { errors: tagErrors },
-  } = useForm<TagFormValues>({
-    resolver: zodResolver(tagSchema),
-    defaultValues: {
-      name: '',
-      color: DEFAULT_TAG_COLOR,
-    },
-  });
+  control: tagControl,
+  handleSubmit: handleTagSubmit,
+  reset: resetTagForm,
+  setValue: setTagFormValue,
+  formState: { errors: tagErrors },
+} = useForm<TagFormValues>({
+  resolver: zodResolver(tagSchema),
+  defaultValues: {
+    name: '',
+    color: DEFAULT_TAG_COLOR,
+  },
+});
 
   const {
     control: userControl,
@@ -302,69 +306,74 @@ export function AdminPage() {
   }, [userSearch, users]);
 
   const openCreateTagModal = () => {
-    setEditingTag(null);
-    resetTagForm({
-      name: '',
-      color: DEFAULT_TAG_COLOR,
-    });
-    setIsTagModalOpen(true);
-  };
+  setEditingTag(null);
+  setSelectedTagColor(DEFAULT_TAG_COLOR);
+
+  resetTagForm({
+    name: '',
+    color: DEFAULT_TAG_COLOR,
+  });
+
+  setIsTagModalOpen(true);
+};
 
   const openEditTagModal = (tag: ScenarioTag) => {
-    setEditingTag(tag);
-    resetTagForm({
-      name: tag.name,
-      color: tag.color,
-    });
-    setIsTagModalOpen(true);
-  };
+  setEditingTag(tag);
+  setSelectedTagColor(tag.color);
+
+  resetTagForm({
+    name: tag.name,
+    color: tag.color,
+  });
+
+  setIsTagModalOpen(true);
+};
 
   const closeTagModal = () => {
-    setIsTagModalOpen(false);
-    setEditingTag(null);
-    resetTagForm({
-      name: '',
-      color: DEFAULT_TAG_COLOR,
-    });
-  };
+  setIsTagModalOpen(false);
+  setEditingTag(null);
+  setSelectedTagColor(DEFAULT_TAG_COLOR);
+
+  resetTagForm({
+    name: '',
+    color: DEFAULT_TAG_COLOR,
+  });
+};
 
   const saveTag = async (values: TagFormValues) => {
-    const normalizedName = values.name.trim();
+  const normalizedName = values.name.trim();
 
-    try {
-      setIsSavingTag(true);
-
-      if (editingTag) {
-        await http.put(`/tags/${editingTag.id}`, {
-          name: normalizedName,
-          color: values.color,
-        });
-
-        message.success('Тег сохранён');
-      } else {
-        await http.post('/tags', {
-          name: normalizedName,
-          color: values.color,
-        });
-
-        message.success('Тег добавлен');
-      }
-
-      closeTagModal();
-      await loadTags();
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 409) {
-        message.error('Тег с таким названием уже существует');
-        return;
-      }
-
-      message.error(
-        getApiErrorMessage(error, 'Не удалось сохранить тег'),
-      );
-    } finally {
-      setIsSavingTag(false);
-    }
+  const payload = {
+    name: normalizedName,
+    color: selectedTagColor,
   };
+
+  try {
+    setIsSavingTag(true);
+
+    if (editingTag) {
+      await http.put(`/tags/${editingTag.id}`, payload);
+      message.success('Тег сохранён');
+    } else {
+      await http.post('/tags', payload);
+      message.success('Тег добавлен');
+    }
+
+    closeTagModal();
+    await loadTags();
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 409) {
+      message.error('Тег с таким названием уже существует');
+      return;
+    }
+
+    message.error(
+      getApiErrorMessage(error, 'Не удалось сохранить тег'),
+    );
+  } finally {
+    setIsSavingTag(false);
+  }
+};
 
   const deleteTag = async (tagId: string) => {
     try {
@@ -738,23 +747,26 @@ export function AdminPage() {
             />
           </Form.Item>
 
-          <Form.Item
+         <Form.Item
   label="Цвет"
   validateStatus={tagErrors.color ? 'error' : ''}
   help={tagErrors.color?.message}
 >
-  <Controller
-    name="color"
-    control={tagControl}
-    render={({ field }) => (
-      <ColorPicker
-        value={field.value}
-        onChange={(color) => {
-          field.onChange(color.toHexString());
-        }}
-        showText
-      />
-    )}
+  <ColorPicker
+    value={selectedTagColor}
+    format="hex"
+    onChange={(color) => {
+      const hex = color.toHexString();
+
+      setSelectedTagColor(hex);
+
+      setTagFormValue('color', hex, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+    }}
+    showText={(color) => color.toHexString()}
   />
 </Form.Item>
         </Form>

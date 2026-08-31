@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Checkbox,
-  Input,
   Modal,
   Select,
   Space,
@@ -12,12 +11,17 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { DeleteOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 
 import type { VariableDto } from '../../../shared/types/variable';
+import { AppInput } from '../../../shared/ui/AppInput/AppInput';
 import type {
   VariableResolution,
 } from '../model/variableImport.types';
+import type {
+  RelatedScenarioVariableUsage,
+} from '../../scenarioCustomMethodImport/hooks/useRelatedScenarioVariableUsages';
 
 const { Text } = Typography;
 
@@ -43,6 +47,19 @@ interface CreateVariableTableProps {
     importedVariableName: string,
     isUserVariable: boolean,
   ) => void;
+  onChangeVariableValue: (
+    importedVariableName: string,
+    defaultValue: string,
+  ) => void;
+    onDeleteVariable: (
+    importedVariableName: string,
+    replacementVariableName?: string,
+  ) => void;
+  getRelatedScenarioUsages: (
+    importedVariableName: string,
+  ) => RelatedScenarioVariableUsage[];
+  isRelatedScenarioVariablesLoading: boolean;
+  relatedScenarioVariablesError: string | null;
 }
 
 function getVariableTypeLabel(isUserVariable: boolean): string {
@@ -67,6 +84,11 @@ export function CreateVariableTable({
   onCreateUserVariable,
   onResetResolution,
   onChangeVariableType,
+  onChangeVariableValue,
+  onDeleteVariable,
+  getRelatedScenarioUsages,
+  isRelatedScenarioVariablesLoading,
+  relatedScenarioVariablesError,
 }: CreateVariableTableProps) {
   const [activeResolutionName, setActiveResolutionName] = useState<
     string | null
@@ -83,6 +105,12 @@ export function CreateVariableTable({
 
   const [editedIsUserVariable, setEditedIsUserVariable] =
     useState(true);
+
+  const [deletingResolutionName, setDeletingResolutionName] =
+    useState<string | null>(null);
+
+  const [replacementVariableName, setReplacementVariableName] =
+    useState<string | undefined>(undefined);
 
   const rows = useMemo<VariableResolutionTableRow[]>(
     () =>
@@ -111,6 +139,33 @@ export function CreateVariableTable({
     [rows, typeEditingResolutionName],
   );
 
+  const deletingResolution = useMemo(
+    () =>
+      rows.find(
+        (row) =>
+          row.importedVariable.name === deletingResolutionName,
+      ) ?? null,
+    [deletingResolutionName, rows],
+  );
+
+    const relatedScenarioUsages = useMemo(
+    () =>
+      deletingResolution
+        ? getRelatedScenarioUsages(
+            deletingResolution.importedVariable.name,
+          )
+        : [],
+    [deletingResolution, getRelatedScenarioUsages],
+  );
+
+  const isUsedInRelatedScenario =
+    relatedScenarioUsages.length > 0;
+
+  const isDeleteBlockedByRelatedScenarios =
+    isRelatedScenarioVariablesLoading ||
+    relatedScenarioVariablesError !== null ||
+    isUsedInRelatedScenario;
+
   const userPlatformVariables = useMemo(
     () =>
       platformVariables.filter(
@@ -118,6 +173,34 @@ export function CreateVariableTable({
       ),
     [platformVariables],
   );
+
+  const replacementOptions = useMemo(() => {
+    if (!deletingResolution) {
+      return [];
+    }
+
+    return rows
+      .filter(
+        (row) =>
+          row.importedVariable.name !==
+          deletingResolution.importedVariable.name,
+      )
+      .filter(
+        (row) =>
+          row.importedVariable.isUserVariable ===
+          deletingResolution.importedVariable.isUserVariable,
+      )
+      .map((row) => ({
+        value: row.importedVariable.name,
+        label: row.importedVariable.name,
+      }));
+  }, [deletingResolution, rows]);
+
+  const isDeletingVariableUsed = Boolean(
+  deletingResolution?.importedVariable.sources.some(
+    (source) => source !== 'variables',
+  ),
+);
 
   const closeResolutionModal = () => {
     setActiveResolutionName(null);
@@ -175,6 +258,40 @@ export function CreateVariableTable({
     closeTypeModal();
   };
 
+  const openDeleteModal = (importedVariableName: string) => {
+    setDeletingResolutionName(importedVariableName);
+    setReplacementVariableName(undefined);
+  };
+
+  const closeDeleteModal = () => {
+    setDeletingResolutionName(null);
+    setReplacementVariableName(undefined);
+  };
+
+  const confirmDeleteVariable = () => {
+    if (!deletingResolution || isDeleteBlockedByRelatedScenarios) {
+      return;
+    }
+
+    const importedVariableName =
+      deletingResolution.importedVariable.name;
+
+    if (isDeletingVariableUsed) {
+      if (!replacementVariableName) {
+        return;
+      }
+
+      onDeleteVariable(
+        importedVariableName,
+        replacementVariableName,
+      );
+    } else {
+      onDeleteVariable(importedVariableName);
+    }
+
+    closeDeleteModal();
+  };
+
   const useSelectedPlatformVariable = () => {
     if (
       !activeResolution ||
@@ -203,12 +320,11 @@ export function CreateVariableTable({
     closeResolutionModal();
   };
 
-  const columns = useMemo<ColumnsType<VariableResolutionTableRow>>(
-    () => [
+  const columns: ColumnsType<VariableResolutionTableRow> = [
       {
         title: 'Переменная',
         key: 'name',
-        width: '34%',
+        width: '30%',
         render: (_, row) => (
           <button
             type="button"
@@ -251,7 +367,7 @@ export function CreateVariableTable({
       {
         title: 'Значение',
         key: 'defaultValue',
-        width: '36%',
+        width: '40%',
         render: (_, row) => {
           const { defaultValue, isUserVariable } =
             row.importedVariable;
@@ -262,15 +378,21 @@ export function CreateVariableTable({
               : hasValue(defaultValue);
 
           return (
-            <Input
-              readOnly
+            <AppInput
+              value={defaultValue}
+              disabled={disabled}
               status={isValid ? undefined : 'error'}
-              value={defaultValue || undefined}
               placeholder={
                 isUserVariable
                   ? 'Для пользовательской переменной значение должно быть пустым'
-                  : 'Заполните значение сценарной переменной'
+                  : 'Введите значение сценарной переменной'
               }
+              onChange={(event) => {
+                onChangeVariableValue(
+                  row.importedVariable.name,
+                  event.target.value,
+                );
+              }}
             />
           );
         },
@@ -283,21 +405,64 @@ export function CreateVariableTable({
           const { importedVariable } = row;
           const { isUserVariable, defaultValue } = importedVariable;
 
-          if (!isUserVariable) {
-            return hasValue(defaultValue) ? (
-              <Tag color="success">Готово</Tag>
-            ) : (
-              <Text type="danger">
-                Заполните значение сценарной переменной
-              </Text>
+          if (!isUserVariable && !hasValue(defaultValue)) {
+            return (
+              <Space size={8} wrap>
+                <Text type="danger">
+                  Заполните значение
+                </Text>
+
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={disabled}
+                  aria-label={`Удалить ${importedVariable.name}`}
+                  onClick={() =>
+                    openDeleteModal(importedVariable.name)
+                  }
+                />
+              </Space>
             );
           }
 
-          if (hasValue(defaultValue)) {
+          if (isUserVariable && hasValue(defaultValue)) {
             return (
-              <Text type="danger">
-                Для пользовательской переменной значение должно быть пустым
-              </Text>
+              <Space size={8} wrap>
+                <Text type="danger">
+                  Значение должно быть пустым
+                </Text>
+
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={disabled}
+                  aria-label={`Удалить ${importedVariable.name}`}
+                  onClick={() =>
+                    openDeleteModal(importedVariable.name)
+                  }
+                />
+              </Space>
+            );
+          }
+
+          if (!isUserVariable) {
+            return (
+              <Space size={8}>
+                <Tag color="success">Готово</Tag>
+
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={disabled}
+                  aria-label={`Удалить ${importedVariable.name}`}
+                  onClick={() =>
+                    openDeleteModal(importedVariable.name)
+                  }
+                />
+              </Space>
             );
           }
 
@@ -312,13 +477,22 @@ export function CreateVariableTable({
                   type="link"
                   disabled={disabled}
                   onClick={() =>
-                    openResolutionModal(
-                      importedVariable.name,
-                    )
+                    openResolutionModal(importedVariable.name)
                   }
                 >
                   Изменить
                 </Button>
+
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={disabled}
+                  aria-label={`Удалить ${importedVariable.name}`}
+                  onClick={() =>
+                    openDeleteModal(importedVariable.name)
+                  }
+                />
               </Space>
             );
           }
@@ -334,13 +508,22 @@ export function CreateVariableTable({
                   type="link"
                   disabled={disabled}
                   onClick={() =>
-                    openResolutionModal(
-                      importedVariable.name,
-                    )
+                    openResolutionModal(importedVariable.name)
                   }
                 >
                   Изменить
                 </Button>
+
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={disabled}
+                  aria-label={`Удалить ${importedVariable.name}`}
+                  onClick={() =>
+                    openDeleteModal(importedVariable.name)
+                  }
+                />
               </Space>
             );
           }
@@ -356,34 +539,54 @@ export function CreateVariableTable({
                   type="link"
                   disabled={disabled}
                   onClick={() =>
-                    openResolutionModal(
-                      importedVariable.name,
-                    )
+                    openResolutionModal(importedVariable.name)
                   }
                 >
                   Изменить
                 </Button>
+
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={disabled}
+                  aria-label={`Удалить ${importedVariable.name}`}
+                  onClick={() =>
+                    openDeleteModal(importedVariable.name)
+                  }
+                />
               </Space>
             );
           }
 
           return (
-            <Button
-              type="primary"
-              ghost
-              disabled={disabled}
-              onClick={() =>
-                openResolutionModal(importedVariable.name)
-              }
-            >
-              Решить
-            </Button>
+            <Space size={8}>
+              <Button
+                type="primary"
+                ghost
+                disabled={disabled}
+                onClick={() =>
+                  openResolutionModal(importedVariable.name)
+                }
+              >
+                Решить
+              </Button>
+
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={disabled}
+                aria-label={`Удалить ${importedVariable.name}`}
+                onClick={() =>
+                  openDeleteModal(importedVariable.name)
+                }
+              />
+            </Space>
           );
         },
       },
-    ],
-    [disabled, rows],
-  );
+    ];
 
   return (
     <>
@@ -393,11 +596,10 @@ export function CreateVariableTable({
         style={{ marginBottom: 24 }}
       >
         <Typography.Paragraph type="secondary">
-          Нажмите на имя переменной, чтобы изменить её тип.
-          Сценарная переменная создаётся внутри сценария и должна
-          содержать значение. Пользовательская переменная должна иметь
-          пустое значение: её можно сопоставить с существующей
-          переменной платформы либо создать новую.
+          Нажмите на имя, чтобы изменить тип переменной. Сценарная
+          переменная должна содержать значение. Пользовательская
+          переменная должна иметь пустое значение и быть сопоставлена с
+          переменной платформы либо отмечена для создания.
         </Typography.Paragraph>
 
         <Table<VariableResolutionTableRow>
@@ -418,7 +620,6 @@ export function CreateVariableTable({
         okText="Сохранить"
         cancelText="Отмена"
         destroyOnHidden
-        confirmLoading={false}
         okButtonProps={{ disabled }}
         onOk={saveVariableType}
         onCancel={closeTypeModal}
@@ -432,7 +633,7 @@ export function CreateVariableTable({
             <div>
               <Text type="secondary">Переменная</Text>
 
-              <Input
+              <AppInput
                 readOnly
                 value={
                   typeEditingResolution.importedVariable.name
@@ -463,22 +664,6 @@ export function CreateVariableTable({
                 }}
               />
             </div>
-
-            {editedIsUserVariable ? (
-              <Alert
-                type="info"
-                showIcon
-                message="Пользовательская переменная"
-                description="Значение в импортируемом JSON должно быть пустым. После сохранения выберите существующую пользовательскую переменную платформы или подтвердите создание новой."
-              />
-            ) : (
-              <Alert
-                type="info"
-                showIcon
-                message="Сценарная переменная"
-                description="Эта переменная будет создана вместе со сценарием и не требует сопоставления с каталогом платформы. Убедитесь, что её значение заполнено."
-              />
-            )}
           </Space>
         )}
       </Modal>
@@ -502,7 +687,7 @@ export function CreateVariableTable({
               type="warning"
               showIcon
               message="Проверьте каталог переменных"
-              description="Перед созданием новой переменной убедитесь, что на платформе нет подходящей пользовательской переменной. Дубли будет сложно удалить или объединить."
+              description="Перед созданием переменной убедитесь, что в каталоге нет подходящей пользовательской переменной."
             />
 
             <div>
@@ -510,18 +695,11 @@ export function CreateVariableTable({
                 Импортируемая переменная
               </Text>
 
-              <Input
+              <AppInput
                 readOnly
                 value={activeResolution.importedVariable.name}
                 style={{ marginTop: 6 }}
               />
-
-              <Tag
-                color="blue"
-                style={{ marginTop: 8, marginInlineEnd: 0 }}
-              >
-                Пользовательская
-              </Tag>
             </div>
 
             <div>
@@ -582,7 +760,7 @@ export function CreateVariableTable({
                 }}
               >
                 Я проверил(а) каталог и понимаю, что создаю новую
-                пользовательскую переменную.
+                пользовательскую переменную, которую потом сложно будет удалить.
               </Checkbox>
 
               <Button
@@ -610,6 +788,103 @@ export function CreateVariableTable({
             >
               Сбросить решение
             </Button>
+          </Space>
+        )}
+      </Modal>
+
+      <Modal
+        open={deletingResolution !== null}
+        title="Удаление переменной"
+        okText="Удалить"
+        okButtonProps={{
+          danger: true,
+          disabled:
+            isDeleteBlockedByRelatedScenarios ||
+            (
+              isDeletingVariableUsed &&
+              (
+                replacementOptions.length === 0 ||
+                !replacementVariableName
+              )
+            ),
+        }}
+        cancelText="Отмена"
+        destroyOnHidden
+        onOk={confirmDeleteVariable}
+        onCancel={closeDeleteModal}
+      >
+        {deletingResolution && (
+          <Space
+            direction="vertical"
+            size={16}
+            style={{ width: '100%' }}
+          >
+            <Text>
+              Удалить переменную{' '}
+              <Typography.Text code>
+                {deletingResolution.importedVariable.name}
+              </Typography.Text>
+              ?
+            </Text>
+
+            {isRelatedScenarioVariablesLoading ? (
+  <Alert
+    type="info"
+    showIcon
+    message="Проверяем связанные сценарии"
+    description="Удаление будет доступно после проверки использования переменной в связанных сценариях."
+  />
+) : relatedScenarioVariablesError ? (
+  <Alert
+    type="error"
+    showIcon
+    message="Нельзя проверить связанные сценарии"
+    description={relatedScenarioVariablesError}
+  />
+) : isUsedInRelatedScenario ? (
+  <Alert
+    type="error"
+    showIcon
+    message="Нельзя удалить переменную"
+    description={`Переменная используется в связанных сценариях: ${relatedScenarioUsages
+      .map((usage) => `«${usage.scenarioName}»`)
+      .join(', ')}.`}
+  />
+) : !isDeletingVariableUsed ? (
+  <Alert
+    type="info"
+    showIcon
+    message="Эта переменная нигде не используется"
+    description="Вы желаете удалить её из импортируемого сценария?"
+  />
+) : replacementOptions.length === 0 ? (
+  <Alert
+    type="error"
+    showIcon
+    message="Невозможно удалить переменную"
+    description="Переменная используется в текущем сценарии, но нет другой переменной того же типа, на которую можно заменить ссылки."
+  />
+) : (
+  <>
+    <Alert
+      type="warning"
+      showIcon
+      message="Переменная используется в сценарии"
+      description="Выберите другую переменную того же типа. После подтверждения все ссылки на удаляемую переменную будут заменены выбранным именем."
+    />
+
+    <Select
+      showSearch
+      optionFilterProp="label"
+      placeholder="Выберите замену"
+      value={replacementVariableName}
+      options={replacementOptions}
+      onChange={(value: string) => {
+        setReplacementVariableName(value);
+      }}
+    />
+  </>
+)}
           </Space>
         )}
       </Modal>

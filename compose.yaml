@@ -9,7 +9,7 @@ services:
       DATABASE_URL: jdbc:sqlite:/data/test_recorder_scenario_db.db
       SESSION_COOKIE_SECURE: "false"
     volumes:
-      - scenario-db-data:/data
+      - ./data:/data
     expose:
       - "8080"
     restart: unless-stopped
@@ -23,6 +23,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  scenario-db-data:

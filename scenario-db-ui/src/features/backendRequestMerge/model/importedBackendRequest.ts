@@ -74,9 +74,39 @@ function parseResponseExtractors(
     .filter((item) => item.fieldPath.length > 0);
 }
 
+function getRootActionBackendMethodNames(
+  payload: JsonRecord,
+): Set<string> {
+  const backendMethodNames = new Set<string>();
+
+  for (const action of asArray(payload.actions)) {
+    if (!isRecord(action)) {
+      continue;
+    }
+
+    if (
+      action.action !== 'useBackendMethod' ||
+      typeof action.value !== 'string'
+    ) {
+      continue;
+    }
+
+    const name = action.value.trim();
+
+    if (name.length > 0) {
+      backendMethodNames.add(name);
+    }
+  }
+
+  return backendMethodNames;
+}
+
 export function parseImportedBackendRequests(
   payload: JsonRecord,
 ): BackendRequestDto[] {
+  const directBackendMethodNames =
+    getRootActionBackendMethodNames(payload);
+
   const rawBackendRequests = asArray(payload.backendRequests);
   const rawScenarioOverrides = isRecord(payload.scenarioOverrides)
     ? payload.scenarioOverrides
@@ -141,6 +171,7 @@ export function parseImportedBackendRequests(
     })
     .filter(
       (request) =>
+        directBackendMethodNames.has(request.name) &&
         request.name.length > 0 &&
         request.url.length > 0 &&
         request.httpMethod.length > 0,
