@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react';
+import {
+  useMemo,
+  useState,
+} from 'react';
+
 
 import {
   replaceVariableInBackendResolution,
@@ -22,6 +26,7 @@ import type {
   VariableResolution,
 } from '../model/variableImport.types';
 
+
 interface UseVariableImportParams {
   platformVariables: VariableDto[];
   setPayload: React.Dispatch<
@@ -34,6 +39,7 @@ interface UseVariableImportParams {
   ) => void;
 }
 
+
 interface UseVariableImportResult {
   resolutions: VariableResolution[];
   unresolvedResolutions: VariableResolution[];
@@ -42,11 +48,11 @@ interface UseVariableImportResult {
     React.SetStateAction<VariableResolution[]>
   >;
   rebuildResolutions: (
-  payload: Record<string, unknown>,
-  backendResolutions: BackendRequestResolution[],
-  platformVariables: VariableDto[],
-  previousResolutions?: VariableResolution[],
-) => VariableResolution[];
+    payload: Record<string, unknown>,
+    backendResolutions: BackendRequestResolution[],
+    platformVariables: VariableDto[],
+    previousResolutions?: VariableResolution[],
+  ) => VariableResolution[];
   selectPlatformVariable: (
     importedVariableName: string,
     selectedVariableId: number,
@@ -71,6 +77,23 @@ interface UseVariableImportResult {
   ) => void;
 }
 
+
+function getScenarioVariableMigrations(
+  backendResolutions: BackendRequestResolution[],
+) {
+  return backendResolutions.flatMap((resolution) => [
+    ...(
+      resolution.mergeDraft
+        ?.scenarioVariableMigrations ?? []
+    ),
+    ...(
+      resolution.useExistingDraft
+        ?.scenarioVariableMigrations ?? []
+    ),
+  ]);
+}
+
+
 export function useVariableImport({
   platformVariables,
   setPayload,
@@ -88,19 +111,22 @@ export function useVariableImport({
   const isResolved = unresolvedResolutions.length === 0;
 
   const rebuildResolutions = (
-  nextPayload: Record<string, unknown>,
-  nextBackendResolutions: BackendRequestResolution[],
-  nextPlatformVariables: VariableDto[],
-  previousResolutions: VariableResolution[] = [],
-): VariableResolution[] =>
-  rebuildVariableResolutions(
-    nextPayload,
-    nextBackendResolutions.map(
-      (resolution) => resolution.resolvedRequest,
-    ),
-    nextPlatformVariables,
-    previousResolutions,
-  );
+    nextPayload: Record<string, unknown>,
+    nextBackendResolutions: BackendRequestResolution[],
+    nextPlatformVariables: VariableDto[],
+    previousResolutions: VariableResolution[] = [],
+  ): VariableResolution[] =>
+    rebuildVariableResolutions(
+      nextPayload,
+      nextBackendResolutions.map(
+        (resolution) => resolution.resolvedRequest,
+      ),
+      nextPlatformVariables,
+      previousResolutions,
+      getScenarioVariableMigrations(
+        nextBackendResolutions,
+      ),
+    );
 
   const selectPlatformVariable = (
     importedVariableName: string,
@@ -280,14 +306,14 @@ export function useVariableImport({
       replacementVariableName !== importedVariableName
     ) {
       replaceBackendResolutions((currentResolutions) =>
-  currentResolutions.map((resolution) =>
-    replaceVariableInBackendResolution(
-      resolution,
-      importedVariableName,
-      replacementVariableName,
-    ),
-  ),
-);
+        currentResolutions.map((resolution) =>
+          replaceVariableInBackendResolution(
+            resolution,
+            importedVariableName,
+            replacementVariableName,
+          ),
+        ),
+      );
 
       setPayload((currentPayload) => {
         if (!currentPayload) {

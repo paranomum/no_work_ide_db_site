@@ -3,23 +3,33 @@ import type {
   ScenarioVariableMigration,
 } from './backendRequestMerge.types';
 
+
 export type BackendResolutionKind =
   | 'new'
   | 'existing'
   | 'renamed'
   | 'merged';
 
+
 export interface BackendRequestMergeDraft {
   mergedRequest: BackendRequestDto;
   scenarioVariableMigrations: ScenarioVariableMigration[];
 }
+
+
+export interface BackendRequestUseExistingDraft {
+  scenarioVariableMigrations: ScenarioVariableMigration[];
+}
+
 
 export interface BackendRequestResolution {
   importedRequest: BackendRequestDto;
   resolvedRequest: BackendRequestDto;
   kind: BackendResolutionKind;
   mergeDraft?: BackendRequestMergeDraft;
+  useExistingDraft?: BackendRequestUseExistingDraft;
 }
+
 
 export interface BackendRequestImportState {
   resolutions: BackendRequestResolution[];

@@ -3,16 +3,23 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import {
-  Alert,
   Button,
   Card,
-  Checkbox,
   Input,
+  Modal,
+  Select,
   Space,
   Table,
+  Tag,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import type {
   BackendRequestUsageScenario,
@@ -26,18 +33,109 @@ interface ScenarioVariableMigrationsEditorProps {
   onChange: (value: ScenarioVariableMigration[]) => void;
 }
 
+interface ScenarioVariableMigrationTableRow
+  extends ScenarioVariableMigration {
+  key: string;
+  migrationIndex: number;
+}
+
+function getScenarioLabel(
+  scenario: BackendRequestUsageScenario,
+): string {
+  return (
+    scenario.scenarioName ??
+    `Сценарий #${scenario.scenarioId}`
+  );
+}
+
+function getVariableTypeLabel(isUserVariable: boolean): string {
+  return isUserVariable
+    ? 'Пользовательская'
+    : 'Сценарная';
+}
+
+function getVariableTypeColor(isUserVariable: boolean): string {
+  return isUserVariable ? 'blue' : 'purple';
+}
+
+function createMigrationKey(): string {
+  return crypto.randomUUID();
+}
+
 export function ScenarioVariableMigrationsEditor({
   scenarios,
   value,
   disabled = false,
   onChange,
 }: ScenarioVariableMigrationsEditorProps) {
+  const [
+    typeEditingMigrationIndex,
+    setTypeEditingMigrationIndex,
+  ] = useState<number | null>(null);
+
+  const [editedIsUserVariable, setEditedIsUserVariable] =
+    useState(false);
+
+  /*
+   * Нельзя использовать variable.name в rowKey:
+   * имя меняется во время ввода, строка Table размонтируется,
+   * поэтому Input теряет фокус.
+   *
+   * UI-ключи не добавляются в ScenarioVariableMigration:
+   * этот объект затем уходит в merge/import DTO.
+   */
+  const migrationKeysRef = useRef<string[]>(
+    value.map(() => createMigrationKey()),
+  );
+
+  /*
+   * value может быть заменён родительским компонентом:
+   * например, при открытии другого merge draft или сбросе формы.
+   * Поддерживаем число ключей синхронным с числом migration.
+   */
+  useEffect(() => {
+    const migrationKeys = migrationKeysRef.current;
+
+    while (migrationKeys.length < value.length) {
+      migrationKeys.push(createMigrationKey());
+    }
+
+    if (migrationKeys.length > value.length) {
+      migrationKeys.splice(value.length);
+    }
+  }, [value.length]);
+
+  const rows = useMemo<ScenarioVariableMigrationTableRow[]>(
+    () =>
+      value.map((migration, migrationIndex) => ({
+        ...migration,
+        key: migrationKeysRef.current[migrationIndex],
+        migrationIndex,
+      })),
+    [value],
+  );
+
+  const typeEditingMigration = useMemo(
+    () =>
+      rows.find(
+        (row) =>
+          row.migrationIndex === typeEditingMigrationIndex,
+      ) ?? null,
+    [rows, typeEditingMigrationIndex],
+  );
+
   const addMigration = () => {
+    migrationKeysRef.current.push(createMigrationKey());
+
     onChange([
       ...value,
       {
         variable: {
           name: '',
+          /*
+           * Поле требуется текущим типом, но в этой таблице
+           * описание намеренно не показываем.
+           */
           description: '',
           isUserVariable: false,
         },
@@ -45,243 +143,351 @@ export function ScenarioVariableMigrationsEditor({
           scenarioId: scenario.scenarioId,
           defaultValue: '',
         })),
+        importedScenarioDefaultValue: '',
       },
     ]);
   };
 
   const updateMigration = (
-    index: number,
+    migrationIndex: number,
     updater: (
       currentMigration: ScenarioVariableMigration,
     ) => ScenarioVariableMigration,
   ) => {
     onChange(
-      value.map((migration, itemIndex) =>
-        itemIndex === index ? updater(migration) : migration,
+      value.map((migration, index) =>
+        index === migrationIndex
+          ? updater(migration)
+          : migration,
       ),
     );
   };
 
-  const removeMigration = (index: number) => {
-    onChange(value.filter((_, itemIndex) => itemIndex !== index));
+  const removeMigration = (migrationIndex: number) => {
+    migrationKeysRef.current.splice(migrationIndex, 1);
+
+    onChange(
+      value.filter((_, index) => index !== migrationIndex),
+    );
+
+    setTypeEditingMigrationIndex((currentIndex) => {
+      if (currentIndex === null) {
+        return null;
+      }
+
+      if (currentIndex === migrationIndex) {
+        return null;
+      }
+
+      return currentIndex > migrationIndex
+        ? currentIndex - 1
+        : currentIndex;
+    });
   };
 
-  const columns: ColumnsType<BackendRequestUsageScenario> = [
-    {
-      title: 'Сценарий',
-      key: 'scenarioName',
-      render: (_, scenario) =>
-        scenario.scenarioName ??
-        `Сценарий #${scenario.scenarioId}`,
-    },
-    {
-      title: 'Значение по умолчанию',
-      key: 'defaultValue',
-      render: (_, scenario, migrationIndex) => {
-        const migration = value[migrationIndex];
+  const updateExistingScenarioValue = (
+    migrationIndex: number,
+    scenarioId: number,
+    defaultValue: string,
+  ) => {
+    updateMigration(migrationIndex, (migration) => {
+      const hasScenarioValue = migration.scenarioValues.some(
+        (item) => item.scenarioId === scenarioId,
+      );
 
-        const scenarioValue = migration?.scenarioValues.find(
-          (item) => item.scenarioId === scenario.scenarioId,
-        );
+      return {
+        ...migration,
+        scenarioValues: hasScenarioValue
+          ? migration.scenarioValues.map((item) =>
+              item.scenarioId === scenarioId
+                ? {
+                    ...item,
+                    defaultValue,
+                  }
+                : item,
+            )
+          : [
+              ...migration.scenarioValues,
+              {
+                scenarioId,
+                defaultValue,
+              },
+            ],
+      };
+    });
+  };
 
-        return (
-          <Input
-            value={scenarioValue?.defaultValue ?? ''}
-            disabled={disabled}
-            placeholder="Введите значение"
-            onChange={(event) => {
-              updateMigration(migrationIndex, (currentMigration) => ({
-                ...currentMigration,
-                scenarioValues: currentMigration.scenarioValues.map(
-                  (item) =>
-                    item.scenarioId === scenario.scenarioId
-                      ? {
-                          ...item,
-                          defaultValue: event.target.value,
-                        }
-                      : item,
-                ),
-              }));
-            }}
-          />
-        );
+  const openVariableTypeModal = (migrationIndex: number) => {
+    const migration = value[migrationIndex];
+
+    if (!migration) {
+      return;
+    }
+
+    setTypeEditingMigrationIndex(migrationIndex);
+    setEditedIsUserVariable(
+      migration.variable.isUserVariable,
+    );
+  };
+
+  const closeVariableTypeModal = () => {
+    setTypeEditingMigrationIndex(null);
+  };
+
+  const saveVariableType = () => {
+    if (typeEditingMigrationIndex === null) {
+      return;
+    }
+
+    updateMigration(
+      typeEditingMigrationIndex,
+      (migration) => ({
+        ...migration,
+        variable: {
+          ...migration.variable,
+          isUserVariable: editedIsUserVariable,
+        },
+      }),
+    );
+
+    closeVariableTypeModal();
+  };
+
+  const columns = useMemo<
+    ColumnsType<ScenarioVariableMigrationTableRow>
+  >(
+    () => [
+      {
+        title: 'Переменная',
+        key: 'variable',
+        width: 280,
+        fixed: 'left',
+        render: (_, row) => (
+          <Space
+            direction="vertical"
+            size={6}
+            style={{ width: '100%' }}
+          >
+            <Input
+              value={row.variable.name}
+              disabled={disabled}
+              placeholder="Например funnel.templateId"
+              onChange={(event) =>
+                updateMigration(
+                  row.migrationIndex,
+                  (migration) => ({
+                    ...migration,
+                    variable: {
+                      ...migration.variable,
+                      name: event.target.value,
+                    },
+                  }),
+                )
+              }
+            />
+
+            <Button
+              type="text"
+              size="small"
+              disabled={disabled}
+              onClick={() =>
+                openVariableTypeModal(row.migrationIndex)
+              }
+              style={{
+                width: 'fit-content',
+                height: 'auto',
+                padding: 0,
+              }}
+            >
+              <Tag
+                color={getVariableTypeColor(
+                  row.variable.isUserVariable,
+                )}
+                style={{ marginInlineEnd: 0 }}
+              >
+                {getVariableTypeLabel(
+                  row.variable.isUserVariable,
+                )}
+              </Tag>
+            </Button>
+          </Space>
+        ),
       },
-    },
-  ];
+
+      ...scenarios.map<
+        ColumnsType<ScenarioVariableMigrationTableRow>[number]
+      >((scenario) => ({
+        title: getScenarioLabel(scenario),
+        key: `scenario-${scenario.scenarioId}`,
+        width: 220,
+        render: (_, row) => {
+          const scenarioValue = row.scenarioValues.find(
+            (item) => item.scenarioId === scenario.scenarioId,
+          );
+
+          return (
+            <Input
+              value={scenarioValue?.defaultValue ?? ''}
+              disabled={disabled}
+              placeholder="Значение"
+              onChange={(event) =>
+                updateExistingScenarioValue(
+                  row.migrationIndex,
+                  scenario.scenarioId,
+                  event.target.value,
+                )
+              }
+            />
+          );
+        },
+      })),
+
+      {
+        title: 'Импортируемый сценарий',
+        key: 'importedScenario',
+        width: 240,
+        render: (_, row) => (
+          <Input
+            value={row.importedScenarioDefaultValue}
+            disabled={disabled}
+            placeholder="Значение"
+            onChange={(event) =>
+              updateMigration(
+                row.migrationIndex,
+                (migration) => ({
+                  ...migration,
+                  importedScenarioDefaultValue:
+                    event.target.value,
+                }),
+              )
+            }
+          />
+        ),
+      },
+
+      {
+        title: 'Действия',
+        key: 'actions',
+        fixed: 'right',
+        width: 88,
+        render: (_, row) => (
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            aria-label={`Удалить переменную ${
+              row.variable.name || 'без названия'
+            }`}
+            disabled={disabled}
+            onClick={() =>
+              removeMigration(row.migrationIndex)
+            }
+          />
+        ),
+      },
+    ],
+    [
+      disabled,
+      scenarios,
+      value,
+    ],
+  );
 
   return (
-    <Card
-      size="small"
-      title="Миграции сценарных переменных"
-      extra={
-        <Button
-          size="small"
-          icon={<PlusOutlined />}
-          disabled={disabled}
-          onClick={addMigration}
-        >
-          Добавить переменную
-        </Button>
-      }
-    >
-      <Alert
-        type="warning"
-        showIcon
-        message="Изменение общего backend-метода"
-        description="Для каждой добавленной переменной укажите значение для каждого существующего сценария, который использует этот backend-метод. Это сохранит прежнее поведение сценариев."
-        style={{ marginBottom: 16 }}
-      />
-
-      {scenarios.length === 0 && (
-        <Typography.Paragraph type="secondary">
-          Метод пока не используется существующими сценариями. Миграции
-          для старых сценариев не требуются.
-        </Typography.Paragraph>
-      )}
-
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        {value.map((migration, migrationIndex) => (
-          <Card
-            key={`${migration.variable.name}-${migrationIndex}`}
+    <>
+      <Card
+        size="small"
+        title="Миграции сценарных переменных"
+        extra={
+          <Button
             size="small"
-            title={`Переменная ${migrationIndex + 1}`}
-            extra={
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label="Удалить миграцию переменной"
-                disabled={disabled}
-                onClick={() => removeMigration(migrationIndex)}
-              />
-            }
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={disabled}
+            onClick={addMigration}
           >
-            <Space
-              direction="vertical"
-              size={10}
-              style={{ width: '100%' }}
-            >
-              <Space style={{ width: '100%', display: 'flex' }}>
-                <Input
-                  placeholder="Имя, например funnel.templateId"
-                  value={migration.variable.name}
-                  disabled={disabled}
-                  style={{ flex: 1 }}
-                  onChange={(event) =>
-                    updateMigration(migrationIndex, (currentMigration) => ({
-                      ...currentMigration,
-                      variable: {
-                        ...currentMigration.variable,
-                        name: event.target.value,
-                      },
-                    }))
-                  }
-                />
+            Добавить переменную
+          </Button>
+        }
+      >
+        <Table<ScenarioVariableMigrationTableRow>
+          size="middle"
+          rowKey="key"
+          columns={columns}
+          dataSource={rows}
+          pagination={false}
+          tableLayout="auto"
+          scroll={{ x: 'max-content' }}
+          locale={{
+            emptyText: (
+              <Typography.Text type="secondary">
+                Переменные не добавлены. Нажмите «Добавить
+                переменную», если итоговый метод требует новое
+                значение.
+              </Typography.Text>
+            ),
+          }}
+        />
+      </Card>
 
-                <Checkbox
-                  checked={migration.variable.isUserVariable}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    updateMigration(migrationIndex, (currentMigration) => ({
-                      ...currentMigration,
-                      variable: {
-                        ...currentMigration.variable,
-                        isUserVariable: event.target.checked,
-                      },
-                    }))
-                  }
-                >
-                  Пользовательская
-                </Checkbox>
-              </Space>
+      <Modal
+        open={typeEditingMigration !== null}
+        title="Изменение типа переменной"
+        okText="Сохранить"
+        cancelText="Отмена"
+        destroyOnHidden
+        okButtonProps={{ disabled }}
+        onOk={saveVariableType}
+        onCancel={closeVariableTypeModal}
+      >
+        {typeEditingMigration && (
+          <Space
+            direction="vertical"
+            size={16}
+            style={{ width: '100%' }}
+          >
+            <div>
+              <Typography.Text type="secondary">
+                Переменная
+              </Typography.Text>
 
               <Input
-                placeholder="Описание переменной"
-                value={migration.variable.description}
-                disabled={disabled}
-                onChange={(event) =>
-                  updateMigration(migrationIndex, (currentMigration) => ({
-                    ...currentMigration,
-                    variable: {
-                      ...currentMigration.variable,
-                      description: event.target.value,
-                    },
-                  }))
+                readOnly
+                value={
+                  typeEditingMigration.variable.name ||
+                  'Новая переменная'
                 }
+                style={{ marginTop: 6 }}
               />
+            </div>
 
-              {migration.variable.isUserVariable && (
-                <Alert
-                  type="info"
-                  showIcon
-                  message="Пользовательская переменная"
-                  description="Значение будет храниться в профиле пользователя. Для сохранения существующих сценариев всё равно укажите их текущие значения ниже."
-                />
-              )}
+            <div>
+              <Typography.Text type="secondary">
+                Тип
+              </Typography.Text>
 
-              <Table<BackendRequestUsageScenario>
-                size="small"
-                rowKey="scenarioId"
-                columns={columns.map((column) => ({
-                  ...column,
-                  render:
-                    column.key === 'defaultValue'
-                      ? (_, scenario) => {
-                          const scenarioValue =
-                            migration.scenarioValues.find(
-                              (item) =>
-                                item.scenarioId === scenario.scenarioId,
-                            );
-
-                          return (
-                            <Input
-                              value={scenarioValue?.defaultValue ?? ''}
-                              disabled={disabled}
-                              placeholder="Введите значение"
-                              onChange={(event) =>
-                                updateMigration(
-                                  migrationIndex,
-                                  (currentMigration) => ({
-                                    ...currentMigration,
-                                    scenarioValues:
-                                      currentMigration.scenarioValues.map(
-                                        (item) =>
-                                          item.scenarioId ===
-                                          scenario.scenarioId
-                                            ? {
-                                                ...item,
-                                                defaultValue:
-                                                  event.target.value,
-                                              }
-                                            : item,
-                                      ),
-                                  }),
-                                )
-                              }
-                            />
-                          );
-                        }
-                      : column.render,
-                }))}
-                dataSource={scenarios}
-                pagination={false}
-                locale={{ emptyText: 'Нет связанных сценариев' }}
+              <Select
+                value={editedIsUserVariable}
+                disabled={disabled}
+                style={{ width: '100%', marginTop: 6 }}
+                options={[
+                  {
+                    value: false,
+                    label: 'Сценарная',
+                  },
+                  {
+                    value: true,
+                    label: 'Пользовательская',
+                  },
+                ]}
+                onChange={(nextValue: boolean) => {
+                  setEditedIsUserVariable(nextValue);
+                }}
               />
-            </Space>
-          </Card>
-        ))}
-
-        {value.length === 0 && (
-          <Typography.Text type="secondary">
-            Миграции не добавлены. Добавляй их, если в итоговом методе
-            появляется новая переменная, например
-            <Typography.Text code>
-              {' ${funnel.templateId}'}
-            </Typography.Text>
-            .
-          </Typography.Text>
+            </div>
+          </Space>
         )}
-      </Space>
-    </Card>
+      </Modal>
+    </>
   );
 }

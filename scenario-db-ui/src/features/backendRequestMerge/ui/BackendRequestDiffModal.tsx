@@ -14,30 +14,40 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useMemo, useState } from 'react';
+import {
+  useMemo,
+  useState,
+} from 'react';
+
 
 import {
   getDifferentSettings,
+  getFieldOverridesDiff,
+  getFormDataDiff,
   getJsonDiff,
-  parseFieldOverrides,
-  parseResponseExtractors,
+  getResponseExtractorsDiff,
 } from '../model/backendRequestDiff';
 import type {
+  BackendCollectionDiffRow,
+  BackendDiffState,
   BackendFieldOverride,
+  BackendFormDataDiffRow,
   BackendRequestDto,
   BackendResponseExtractor,
   JsonDiffLine,
 } from '../model/backendRequestMerge.types';
+
 
 interface BackendRequestDiffModalProps {
   open: boolean;
   existingRequest: BackendRequestDto;
   importedRequest: BackendRequestDto;
   onCancelImport: () => void;
-  onUseExisting: () => void;
+  onOpenUseExistingWorkspace: () => void;
   onRenameImported: (importedName: string) => void;
   onOpenMergeWorkspace: () => void;
 }
+
 
 function getLineClassName(line: JsonDiffLine): string {
   if (line.state === 'different') {
@@ -54,6 +64,26 @@ function getLineClassName(line: JsonDiffLine): string {
 
   return '';
 }
+
+
+function getTableRowClassName(
+  state: BackendDiffState,
+): string {
+  if (state === 'different') {
+    return 'backendDiffRowDifferent';
+  }
+
+  if (state === 'only-left') {
+    return 'backendDiffRowOnlyLeft';
+  }
+
+  if (state === 'only-right') {
+    return 'backendDiffRowOnlyRight';
+  }
+
+  return '';
+}
+
 
 function JsonDiffViewer({
   leftTitle,
@@ -138,18 +168,136 @@ function JsonDiffViewer({
   );
 }
 
-function DiffTable<T extends object>({
+
+function isFormBodyType(
+  bodyType: BackendRequestDto['bodyType'],
+): boolean {
+  const normalizedBodyType = String(bodyType).toUpperCase();
+
+  return (
+    normalizedBodyType === 'FORM_URLENCODED' ||
+    normalizedBodyType === 'FORM_DATA'
+  );
+}
+
+
+function FormDataDiffTable({
+  existingRequest,
+  importedRequest,
+}: {
+  existingRequest: BackendRequestDto;
+  importedRequest: BackendRequestDto;
+}) {
+  const rows = useMemo(
+    () =>
+      getFormDataDiff(
+        existingRequest.formDataJson,
+        importedRequest.formDataJson,
+      ),
+    [
+      existingRequest.formDataJson,
+      importedRequest.formDataJson,
+    ],
+  );
+
+  const existingColumns: ColumnsType<BackendFormDataDiffRow> = [
+    {
+      title: 'Поле',
+      dataIndex: 'key',
+      key: 'key',
+      width: '35%',
+      render: (key, row) =>
+        row.occurrence > 0
+          ? `${key} [${row.occurrence + 1}]`
+          : key,
+    },
+    {
+      title: 'Значение',
+      dataIndex: 'existingValue',
+      key: 'existingValue',
+      render: (value: string | null) => value ?? '—',
+    },
+  ];
+
+  const importedColumns: ColumnsType<BackendFormDataDiffRow> = [
+    {
+      title: 'Поле',
+      dataIndex: 'key',
+      key: 'key',
+      width: '35%',
+      render: (key, row) =>
+        row.occurrence > 0
+          ? `${key} [${row.occurrence + 1}]`
+          : key,
+    },
+    {
+      title: 'Значение',
+      dataIndex: 'importedValue',
+      key: 'importedValue',
+      render: (value: string | null) => value ?? '—',
+    },
+  ];
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <Typography.Title level={5}>Form-data поля</Typography.Title>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+          gap: 12,
+        }}
+      >
+        <div>
+          <Typography.Text strong>Существующий</Typography.Text>
+
+          <Table<BackendFormDataDiffRow>
+            size="small"
+            rowKey={(row) => `${row.key}-${row.occurrence}`}
+            columns={existingColumns}
+            dataSource={rows}
+            pagination={false}
+            style={{ marginTop: 8 }}
+            rowClassName={(row) =>
+              getTableRowClassName(row.state)
+            }
+            locale={{ emptyText: 'Нет данных' }}
+          />
+        </div>
+
+        <div>
+          <Typography.Text strong>Импортируемый</Typography.Text>
+
+          <Table<BackendFormDataDiffRow>
+            size="small"
+            rowKey={(row) => `${row.key}-${row.occurrence}`}
+            columns={importedColumns}
+            dataSource={rows}
+            pagination={false}
+            style={{ marginTop: 8 }}
+            rowClassName={(row) =>
+              getTableRowClassName(row.state)
+            }
+            locale={{ emptyText: 'Нет данных' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function CollectionDiffTable<T extends object>({
   title,
-  existingRows,
-  importedRows,
-  columns,
-  getRowKey,
+  rows,
+  existingColumns,
+  importedColumns,
 }: {
   title: string;
-  existingRows: T[];
-  importedRows: T[];
-  columns: ColumnsType<T>;
-  getRowKey: (row: T) => string;
+  rows: BackendCollectionDiffRow<T>[];
+  existingColumns: ColumnsType<BackendCollectionDiffRow<T>>;
+  importedColumns: ColumnsType<BackendCollectionDiffRow<T>>;
 }) {
   return (
     <div style={{ marginTop: 20 }}>
@@ -165,13 +313,16 @@ function DiffTable<T extends object>({
         <div>
           <Typography.Text strong>Существующий</Typography.Text>
 
-          <Table<T>
+          <Table<BackendCollectionDiffRow<T>>
             size="small"
-            rowKey={getRowKey}
-            columns={columns}
-            dataSource={existingRows}
+            rowKey={(row) => row.key}
+            columns={existingColumns}
+            dataSource={rows}
             pagination={false}
             style={{ marginTop: 8 }}
+            rowClassName={(row) =>
+              getTableRowClassName(row.state)
+            }
             locale={{ emptyText: 'Нет данных' }}
           />
         </div>
@@ -179,13 +330,16 @@ function DiffTable<T extends object>({
         <div>
           <Typography.Text strong>Импортируемый</Typography.Text>
 
-          <Table<T>
+          <Table<BackendCollectionDiffRow<T>>
             size="small"
-            rowKey={getRowKey}
-            columns={columns}
-            dataSource={importedRows}
+            rowKey={(row) => row.key}
+            columns={importedColumns}
+            dataSource={rows}
             pagination={false}
             style={{ marginTop: 8 }}
+            rowClassName={(row) =>
+              getTableRowClassName(row.state)
+            }
             locale={{ emptyText: 'Нет данных' }}
           />
         </div>
@@ -194,12 +348,13 @@ function DiffTable<T extends object>({
   );
 }
 
+
 export function BackendRequestDiffModal({
   open,
   existingRequest,
   importedRequest,
   onCancelImport,
-  onUseExisting,
+  onOpenUseExistingWorkspace,
   onRenameImported,
   onOpenMergeWorkspace,
 }: BackendRequestDiffModalProps) {
@@ -210,60 +365,103 @@ export function BackendRequestDiffModal({
     [existingRequest, importedRequest],
   );
 
-  const existingOverrides = useMemo(
-    () => parseFieldOverrides(existingRequest),
-    [existingRequest],
+  const fieldOverridesDiff = useMemo(
+    () => getFieldOverridesDiff(existingRequest, importedRequest),
+    [existingRequest, importedRequest],
   );
 
-  const importedOverrides = useMemo(
-    () => parseFieldOverrides(importedRequest),
-    [importedRequest],
+  const responseExtractorsDiff = useMemo(
+    () =>
+      getResponseExtractorsDiff(
+        existingRequest,
+        importedRequest,
+      ),
+    [existingRequest, importedRequest],
   );
 
-  const existingExtractors = useMemo(
-    () => parseResponseExtractors(existingRequest),
-    [existingRequest],
-  );
+  const hasFormBody =
+    isFormBodyType(existingRequest.bodyType) ||
+    isFormBodyType(importedRequest.bodyType);
 
-  const importedExtractors = useMemo(
-    () => parseResponseExtractors(importedRequest),
-    [importedRequest],
-  );
-
-  const overrideColumns: ColumnsType<BackendFieldOverride> = [
+  const existingOverrideColumns: ColumnsType<
+    BackendCollectionDiffRow<BackendFieldOverride>
+  > = [
     {
       title: 'Поле',
-      dataIndex: 'fieldPath',
       key: 'fieldPath',
+      render: (_, row) => row.existing?.fieldPath ?? '—',
     },
     {
       title: 'Правило',
-      dataIndex: 'method',
       key: 'method',
+      render: (_, row) => row.existing?.method ?? '—',
     },
     {
       title: 'Аргумент',
-      dataIndex: 'methodArg',
       key: 'methodArg',
+      render: (_, row) => row.existing?.methodArg ?? '—',
     },
     {
       title: 'Тип',
-      dataIndex: 'type',
       key: 'type',
       width: 90,
+      render: (_, row) => row.existing?.type ?? '—',
     },
   ];
 
-  const extractorColumns: ColumnsType<BackendResponseExtractor> = [
+  const importedOverrideColumns: ColumnsType<
+    BackendCollectionDiffRow<BackendFieldOverride>
+  > = [
+    {
+      title: 'Поле',
+      key: 'fieldPath',
+      render: (_, row) => row.imported?.fieldPath ?? '—',
+    },
+    {
+      title: 'Правило',
+      key: 'method',
+      render: (_, row) => row.imported?.method ?? '—',
+    },
+    {
+      title: 'Аргумент',
+      key: 'methodArg',
+      render: (_, row) => row.imported?.methodArg ?? '—',
+    },
+    {
+      title: 'Тип',
+      key: 'type',
+      width: 90,
+      render: (_, row) => row.imported?.type ?? '—',
+    },
+  ];
+
+  const existingExtractorColumns: ColumnsType<
+    BackendCollectionDiffRow<BackendResponseExtractor>
+  > = [
     {
       title: 'Поле ответа',
-      dataIndex: 'fieldPath',
       key: 'fieldPath',
+      render: (_, row) => row.existing?.fieldPath ?? '—',
     },
     {
       title: 'Переменная',
-      dataIndex: 'variableName',
       key: 'variableName',
+      render: (_, row) => row.existing?.variableName ?? '—',
+    },
+  ];
+
+  const importedExtractorColumns: ColumnsType<
+    BackendCollectionDiffRow<BackendResponseExtractor>
+  > = [
+    {
+      title: 'Поле ответа',
+      key: 'fieldPath',
+      render: (_, row) => row.imported?.fieldPath ?? '—',
+    },
+    {
+      title: 'Переменная',
+      key: 'variableName',
+      render: (_, row) => row.imported?.variableName ?? '—',
     },
   ];
 
@@ -277,7 +475,11 @@ export function BackendRequestDiffModal({
         maskClosable={false}
         destroyOnHidden
       >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Space
+          direction="vertical"
+          size={16}
+          style={{ width: '100%' }}
+        >
           <Alert
             type="warning"
             showIcon
@@ -286,8 +488,8 @@ export function BackendRequestDiffModal({
           />
 
           <Typography.Paragraph style={{ marginBottom: 0 }}>
-            Импорт не сохранит никаких изменений, пока вы не выберете
-            действие после просмотра различий.
+            Импорт не сохранит никаких изменений, пока вы не
+            выберете действие после просмотра различий.
           </Typography.Paragraph>
 
           <Space>
@@ -321,7 +523,7 @@ export function BackendRequestDiffModal({
               Отменить импорт
             </Button>
 
-            <Button onClick={onUseExisting}>
+            <Button onClick={onOpenUseExistingWorkspace}>
               Использовать существующий
             </Button>
 
@@ -347,7 +549,7 @@ export function BackendRequestDiffModal({
           type="info"
           showIcon
           message="Как читать сравнение"
-          description="Красным отмечены строки, которые различаются или присутствуют только с одной стороны. Ничего не будет изменено, пока вы не выберете действие."
+          description="Красным отмечены изменённые значения, оранжевым — данные только в существующем методе, зелёным — данные только в импортируемом. Ничего не будет изменено, пока вы не выберете действие."
           style={{ marginBottom: 16 }}
         />
 
@@ -362,15 +564,19 @@ export function BackendRequestDiffModal({
             {settingsDiff.map((field) => (
               <Descriptions.Item key={field} label={field}>
                 <Typography.Text type="danger">
-                  {String(existingRequest[
-                    field as keyof BackendRequestDto
-                  ])}
+                  {String(
+                    existingRequest[
+                      field as keyof BackendRequestDto
+                    ],
+                  )}
                 </Typography.Text>
                 {' → '}
                 <Typography.Text type="danger">
-                  {String(importedRequest[
-                    field as keyof BackendRequestDto
-                  ])}
+                  {String(
+                    importedRequest[
+                      field as keyof BackendRequestDto
+                    ],
+                  )}
                 </Typography.Text>
               </Descriptions.Item>
             ))}
@@ -383,12 +589,53 @@ export function BackendRequestDiffModal({
               key: 'request-body',
               label: 'Request body',
               children: (
-                <JsonDiffViewer
-                  leftTitle="Существующий DTO"
-                  rightTitle="Импортируемый DTO"
-                  leftValue={existingRequest.requestBody}
-                  rightValue={importedRequest.requestBody}
-                />
+                <>
+                  {hasFormBody ? (
+                    <FormDataDiffTable
+                      existingRequest={existingRequest}
+                      importedRequest={importedRequest}
+                    />
+                  ) : (
+                    <JsonDiffViewer
+                      leftTitle="Существующий DTO"
+                      rightTitle="Импортируемый DTO"
+                      leftValue={existingRequest.requestBody}
+                      rightValue={importedRequest.requestBody}
+                    />
+                  )}
+
+                  <CollectionDiffTable<BackendFieldOverride>
+                    title="Field overrides"
+                    rows={fieldOverridesDiff}
+                    existingColumns={existingOverrideColumns}
+                    importedColumns={importedOverrideColumns}
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'response',
+              label: 'Response body',
+              children: (
+                <>
+                  <JsonDiffViewer
+                    leftTitle="Существующий response"
+                    rightTitle="Импортируемый response"
+                    leftValue={
+                      existingRequest.capturedResponseBody
+                    }
+                    rightValue={
+                      importedRequest.capturedResponseBody
+                    }
+                  />
+
+                  <CollectionDiffTable<BackendResponseExtractor>
+                    title="Response extractors"
+                    rows={responseExtractorsDiff}
+                    existingColumns={existingExtractorColumns}
+                    importedColumns={importedExtractorColumns}
+                  />
+                </>
               ),
             },
             {
@@ -403,51 +650,7 @@ export function BackendRequestDiffModal({
                 />
               ),
             },
-            {
-              key: 'response',
-              label: 'Response body',
-              children: (
-                <JsonDiffViewer
-                  leftTitle="Существующий response"
-                  rightTitle="Импортируемый response"
-                  leftValue={existingRequest.capturedResponseBody}
-                  rightValue={importedRequest.capturedResponseBody}
-                />
-              ),
-            },
-            {
-              key: 'form-data',
-              label: 'Form-data',
-              children: (
-                <JsonDiffViewer
-                  leftTitle="Существующий form-data"
-                  rightTitle="Импортируемый form-data"
-                  leftValue={existingRequest.formDataJson}
-                  rightValue={importedRequest.formDataJson}
-                />
-              ),
-            },
           ]}
-        />
-
-        <DiffTable<BackendFieldOverride>
-          title="Field overrides"
-          existingRows={existingOverrides}
-          importedRows={importedOverrides}
-          columns={overrideColumns}
-          getRowKey={(item) =>
-            `${item.fieldPath}-${item.method}-${item.methodArg}`
-          }
-        />
-
-        <DiffTable<BackendResponseExtractor>
-          title="Response extractors"
-          existingRows={existingExtractors}
-          importedRows={importedExtractors}
-          columns={extractorColumns}
-          getRowKey={(item) =>
-            `${item.fieldPath}-${item.variableName}`
-          }
         />
       </Modal>
     </>

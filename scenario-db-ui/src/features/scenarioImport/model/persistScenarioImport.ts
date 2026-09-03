@@ -6,13 +6,19 @@ import type {
   PersistScenarioImportInput,
 } from './scenarioImport.types';
 
+import type {
+  BackendRequestDto,
+  ScenarioVariableMigration,
+} from '../../backendRequestMerge/model/backendRequestMerge.types';
+import type {
+  BackendRequestResolution,
+} from '../../backendRequestMerge/model/backendRequestImport.types';
 
 interface ScenarioImportCustomMethodResolutionRequest {
   importedCustomMethodName: string;
   kind: 'existing' | 'selected-existing';
   targetScenarioId: number;
 }
-
 
 interface ScenarioImportVariableResolutionRequest {
   importedVariable: {
@@ -25,6 +31,90 @@ interface ScenarioImportVariableResolutionRequest {
   targetVariableId: number | null;
 }
 
+interface ScenarioImportBackendRequestPayload {
+  name: string;
+  url: string;
+  httpMethod: string;
+  requestBody: string | null;
+  requestHeadersJson: string;
+  capturedResponseBody: string | null;
+  token: string;
+  bodyType: string;
+  formDataJson: string;
+  fieldOverridesJson: string;
+  responseExtractorsJson: string;
+}
+
+interface ScenarioImportBackendMergeDraftRequest {
+  backendRequest: ScenarioImportBackendRequestPayload;
+  scenarioVariableMigrations: ScenarioVariableMigration[];
+}
+
+interface ScenarioImportBackendResolutionRequest {
+  kind: 'new' | 'existing' | 'renamed' | 'merged';
+  resolvedRequest: ScenarioImportBackendRequestPayload;
+  existingBackendRequestId: number | null;
+  mergeDraft: ScenarioImportBackendMergeDraftRequest | null;
+}
+
+function toBackendRequestPayload(
+  request: BackendRequestDto,
+): ScenarioImportBackendRequestPayload {
+  return {
+    name: request.name,
+    url: request.url,
+    httpMethod: request.httpMethod,
+    requestBody: request.requestBody,
+    requestHeadersJson: request.requestHeadersJson,
+    capturedResponseBody: request.capturedResponseBody,
+    token: request.token,
+    bodyType: String(request.bodyType),
+    formDataJson: request.formDataJson,
+    fieldOverridesJson: request.fieldOverridesJson,
+    responseExtractorsJson: request.responseExtractorsJson,
+  };
+}
+
+function toBackendResolutionRequest(
+  resolution: BackendRequestResolution,
+): ScenarioImportBackendResolutionRequest {
+  const existingBackendRequestId =
+    resolution.kind === 'existing' || resolution.kind === 'merged'
+      ? resolution.resolvedRequest.id ?? null
+      : null;
+
+  if (
+    (resolution.kind === 'existing' || resolution.kind === 'merged') &&
+    typeof existingBackendRequestId !== 'number'
+  ) {
+    throw new Error(
+      `Для backend-метода «${resolution.resolvedRequest.name}» отсутствует ID существующего метода`,
+    );
+  }
+
+  if (resolution.kind === 'merged' && !resolution.mergeDraft) {
+    throw new Error(
+      `Для объединённого backend-метода «${resolution.resolvedRequest.name}» отсутствует merge draft`,
+    );
+  }
+
+  return {
+    kind: resolution.kind,
+    resolvedRequest: toBackendRequestPayload(
+      resolution.resolvedRequest,
+    ),
+    existingBackendRequestId,
+    mergeDraft: resolution.mergeDraft
+      ? {
+          backendRequest: toBackendRequestPayload(
+            resolution.mergeDraft.mergedRequest,
+          ),
+          scenarioVariableMigrations:
+            resolution.mergeDraft.scenarioVariableMigrations,
+        }
+      : null,
+  };
+}
 
 export async function persistScenarioImport({
   payload,
@@ -61,7 +151,6 @@ export async function persistScenarioImport({
         targetScenarioId,
       } satisfies ScenarioImportCustomMethodResolutionRequest;
     });
-
 
   const resolvedVariableResolutions = variableResolutions.map(
     (resolution) => {
@@ -129,12 +218,14 @@ export async function persistScenarioImport({
     },
   );
 
+  const resolvedBackendResolutions =
+    backendResolutions.map(toBackendResolutionRequest);
 
   const { data } = await http.post<ScenarioResponse>(
     '/scenarios/import',
     {
       payload,
-      backendResolutions,
+      backendResolutions: resolvedBackendResolutions,
       variableResolutions: resolvedVariableResolutions,
       customMethodResolutions: resolvedCustomMethodResolutions,
       values,

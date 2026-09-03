@@ -18,10 +18,19 @@ import {
   message,
 } from 'antd';
 import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import {
+  Controller,
+  useForm,
+} from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
+
+
 import {
   useBackendRequestImport,
 } from '../../features/backendRequestMerge/hooks/useBackendRequestImport';
@@ -30,6 +39,7 @@ import {
 } from '../../features/backendRequestMerge/model/importedBackendRequest';
 import type {
   BackendRequestDto,
+  UseExistingBackendRequestDraft,
 } from '../../features/backendRequestMerge/model/backendRequestMerge.types';
 import {
   BackendRequestDiffModal,
@@ -37,6 +47,9 @@ import {
 import {
   BackendRequestMergeWorkspace,
 } from '../../features/backendRequestMerge/ui/BackendRequestMergeWorkspace';
+import {
+  UseExistingBackendRequestWorkspace,
+} from '../../features/backendRequestMerge/ui/UseExistingBackendRequestWorkspace';
 import {
   useScenarioCustomMethodImport,
 } from '../../features/scenarioCustomMethodImport/hooks/useScenarioCustomMethodImport';
@@ -47,17 +60,26 @@ import {
   ScenarioCustomMethodTable,
 } from '../../features/scenarioCustomMethodImport/ui/ScenarioCustomMethodTable';
 import {
+  useRelatedScenarioVariableUsages,
+} from '../../features/scenarioCustomMethodImport/hooks/useRelatedScenarioVariableUsages';
+import {
   persistScenarioImport,
 } from '../../features/scenarioImport/model/persistScenarioImport';
 import {
   ScenarioJsonEditor,
 } from '../../features/scenarioImport/ui/ScenarioJsonEditor';
 import {
-  useRelatedScenarioVariableUsages,
-} from '../../features/scenarioCustomMethodImport/hooks/useRelatedScenarioVariableUsages';
+  useVariableImport,
+} from '../../features/variableImport/hooks/useVariableImport';
 import {
   CreateVariableTable,
 } from '../../features/variableImport/ui/CreateVariableTable';
+import {
+  applyMigrationsToPayload,
+} from '../../features/variableImport/model/variablePayloadMutations';
+import {
+  replaceVariableNamesInPayload,
+} from '../../features/variableImport/model/variableNameReplacement';
 import { http } from '../../shared/api/http';
 import type {
   TagResponse,
@@ -68,11 +90,10 @@ import type {
 import { AppTextArea } from '../../shared/ui/AppInput/AppTextArea';
 import { AppSelectMultiple } from '../../shared/ui/AppSelectMultiple/AppSelectMultiple';
 import styles from './ScenarioCreatePage.module.css';
-import {
-  useVariableImport,
-} from '../../features/variableImport/hooks/useVariableImport';
+
 
 const { Title, Text } = Typography;
+
 
 const createScenarioSchema = z.object({
   name: z
@@ -86,7 +107,11 @@ const createScenarioSchema = z.object({
   tagIds: z.array(z.string()),
 });
 
-type CreateScenarioFormValues = z.infer<typeof createScenarioSchema>;
+
+type CreateScenarioFormValues = z.infer<
+  typeof createScenarioSchema
+>;
+
 
 function getApiErrorMessage(
   error: unknown,
@@ -99,14 +124,22 @@ function getApiErrorMessage(
     return error.response.data.message;
   }
 
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
   return defaultMessage;
 }
+
 
 function getScenarioNameFromFileName(fileName: string): string {
   return fileName.replace(/\.json$/i, '').trim();
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
+
+function isJsonObject(
+  value: unknown,
+): value is Record<string, unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -114,43 +147,105 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
+
+function getUseExistingRenameReplacements(
+  draft: UseExistingBackendRequestDraft,
+): Array<{ from: string; to: string }> {
+  return draft.decisions.flatMap((decision) => {
+    if (
+      decision.kind !==
+      'rename-existing-and-create-new'
+    ) {
+      return [];
+    }
+
+    const issue = draft.issues.find(
+      (item) => item.id === decision.issueId,
+    );
+
+    const currentVariableName =
+      issue?.existingScenarioVariable?.name;
+
+    const nextVariableName =
+      decision.renamedExistingVariableName.trim();
+
+    if (!currentVariableName || !nextVariableName) {
+      return [];
+    }
+
+    return [
+      {
+        from: currentVariableName,
+        to: nextVariableName,
+      },
+    ];
+  });
+}
+
+
+function getAllScenarioVariableMigrations(
+  resolutions: ReturnType<
+    typeof useBackendRequestImport
+  >['state']['resolutions'],
+) {
+  return resolutions.flatMap((resolution) => [
+    ...(
+      resolution.mergeDraft
+        ?.scenarioVariableMigrations ?? []
+    ),
+    ...(
+      resolution.useExistingDraft
+        ?.scenarioVariableMigrations ?? []
+    ),
+  ]);
+}
+
+
 export function ScenarioCreatePage() {
   const navigate = useNavigate();
 
   const [tags, setTags] = useState<TagResponse[]>([]);
   const [isTagsLoading, setIsTagsLoading] = useState(true);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] =
+    useState<File | null>(null);
+
   const [parsedPayload, setParsedPayload] = useState<
     Record<string, unknown> | null
   >(null);
 
-  const [existingBackendRequests, setExistingBackendRequests] = useState<
-    BackendRequestDto[]
-  >([]);
+  const [
+    existingBackendRequests,
+    setExistingBackendRequests,
+  ] = useState<BackendRequestDto[]>([]);
 
   const backendImport = useBackendRequestImport({
-  existingBackendRequests,
-});
+    existingBackendRequests,
+  });
 
-const customMethodImport = useScenarioCustomMethodImport();
+  const customMethodImport = useScenarioCustomMethodImport();
 
   const [platformVariables, setPlatformVariables] = useState<
     VariableDto[]
   >([]);
 
-    const variableImport = useVariableImport({
-  platformVariables,
-  setPayload: setParsedPayload,
-  replaceBackendResolutions:
-    backendImport.replaceResolutions,
-});
+  const variableImport = useVariableImport({
+    platformVariables,
+    setPayload: setParsedPayload,
+    replaceBackendResolutions:
+      backendImport.replaceResolutions,
+  });
 
   const relatedScenarioVariableUsages =
-  useRelatedScenarioVariableUsages(customMethodImport.resolutions);
+    useRelatedScenarioVariableUsages(
+      customMethodImport.resolutions,
+    );
 
-  const [isVariablesLoading, setIsVariablesLoading] = useState(false);
+  const [isVariablesLoading, setIsVariablesLoading] =
+    useState(false);
+
   const [isParsingFile, setIsParsingFile] = useState(false);
+
   const [isCreating, setIsCreating] = useState(false);
 
   const {
@@ -167,6 +262,7 @@ const customMethodImport = useScenarioCustomMethodImport();
     },
   });
 
+
   useEffect(() => {
     let isMounted = true;
 
@@ -174,7 +270,9 @@ const customMethodImport = useScenarioCustomMethodImport();
       try {
         setIsTagsLoading(true);
 
-        const { data } = await http.get<TagResponse[]>('/tags');
+        const { data } = await http.get<TagResponse[]>(
+          '/tags',
+        );
 
         if (isMounted) {
           setTags(data);
@@ -202,6 +300,7 @@ const customMethodImport = useScenarioCustomMethodImport();
     };
   }, []);
 
+
   const resetImportedFileState = () => {
     setSelectedFile(null);
     setParsedPayload(null);
@@ -211,6 +310,7 @@ const customMethodImport = useScenarioCustomMethodImport();
     setPlatformVariables([]);
     customMethodImport.reset();
   };
+
 
   const selectFile = async (file: File) => {
     const isJsonFile =
@@ -241,32 +341,34 @@ const customMethodImport = useScenarioCustomMethodImport();
         parseImportedBackendRequests(nextParsedPayload);
 
       const [
-  backendRequestsResponse,
-  variablesResponse,
-] = await Promise.all([
-  http.get<BackendRequestDto[]>('/backend-requests'),
-  http.get<VariableDto[]>('/variables'),
-]);
+        backendRequestsResponse,
+        variablesResponse,
+      ] = await Promise.all([
+        http.get<BackendRequestDto[]>('/backend-requests'),
+        http.get<VariableDto[]>('/variables'),
+      ]);
 
-const backendRequestsFromApi = backendRequestsResponse.data;
-const variablesFromApi = variablesResponse.data;
+      const backendRequestsFromApi =
+        backendRequestsResponse.data;
+
+      const variablesFromApi = variablesResponse.data;
 
       const nextBackendImportState = backendImport.initialize(
-  importedBackendRequests,
-  backendRequestsFromApi,
-);
+        importedBackendRequests,
+        backendRequestsFromApi,
+      );
 
       const initialVariableResolutions =
-  variableImport.rebuildResolutions(
-    nextParsedPayload,
-    nextBackendImportState.resolutions,
-    variablesFromApi,
-  );
+        variableImport.rebuildResolutions(
+          nextParsedPayload,
+          nextBackendImportState.resolutions,
+          variablesFromApi,
+        );
 
-  const initialCustomMethodResolutions =
-  await customMethodImport.initializeFromApi(
-    nextParsedPayload,
-  );
+      const initialCustomMethodResolutions =
+        await customMethodImport.initializeFromApi(
+          nextParsedPayload,
+        );
 
       setSelectedFile(file);
       setParsedPayload(nextParsedPayload);
@@ -274,7 +376,9 @@ const variablesFromApi = variablesResponse.data;
       setPlatformVariables(variablesFromApi);
       variableImport.setResolutions(initialVariableResolutions);
 
-      const nameFromFile = getScenarioNameFromFileName(file.name);
+      const nameFromFile = getScenarioNameFromFileName(
+        file.name,
+      );
 
       if (nameFromFile) {
         setValue('name', nameFromFile, {
@@ -290,7 +394,9 @@ const variablesFromApi = variablesResponse.data;
       resetImportedFileState();
 
       if (error instanceof SyntaxError) {
-        message.error('Выбранный файл содержит некорректный JSON');
+        message.error(
+          'Выбранный файл содержит некорректный JSON',
+        );
       } else {
         message.error(
           getApiErrorMessage(
@@ -309,26 +415,28 @@ const variablesFromApi = variablesResponse.data;
     return false;
   };
 
+
   const cancelImport = () => {
     resetImportedFileState();
     message.info('Импорт сценария отменён');
   };
 
+
   const unresolvedVariables =
-  variableImport.unresolvedResolutions;
+    variableImport.unresolvedResolutions;
 
   const unresolvedCustomMethods =
-  customMethodImport.unresolvedResolutions;
+    customMethodImport.unresolvedResolutions;
 
-const existingCustomMethodsCount =
-  customMethodImport.resolutions.filter(
-    (resolution) => resolution.kind === 'existing',
-  ).length;
+  const existingCustomMethodsCount =
+    customMethodImport.resolutions.filter(
+      (resolution) => resolution.kind === 'existing',
+    ).length;
 
-const selectedCustomMethodsCount =
-  customMethodImport.resolutions.filter(
-    (resolution) => resolution.kind === 'selected-existing',
-  ).length;
+  const selectedCustomMethodsCount =
+    customMethodImport.resolutions.filter(
+      (resolution) => resolution.kind === 'selected-existing',
+    ).length;
 
   const existingVariablesCount = useMemo(
     () =>
@@ -357,27 +465,28 @@ const selectedCustomMethodsCount =
   );
 
   const isBackendImportResolved =
-  selectedFile !== null &&
-  parsedPayload !== null &&
-  backendImport.isResolved;
+    selectedFile !== null &&
+    parsedPayload !== null &&
+    backendImport.isResolved;
 
-const resolvedBackendMethodsCount =
-  backendImport.resolvedCount;
+  const resolvedBackendMethodsCount =
+    backendImport.resolvedCount;
 
-const activeConflict = backendImport.activeConflict;
+  const activeConflict = backendImport.activeConflict;
 
-const existingConflictRequest =
-  backendImport.existingConflictRequest;
+  const existingConflictRequest =
+    backendImport.existingConflictRequest;
 
   const isVariableImportResolved =
-  selectedFile !== null &&
-  !isVariablesLoading &&
-  variableImport.isResolved;
+    selectedFile !== null &&
+    !isVariablesLoading &&
+    variableImport.isResolved;
 
   const isCustomMethodImportResolved =
-  selectedFile !== null &&
-  !customMethodImport.isLoading &&
-  customMethodImport.isResolved;
+    selectedFile !== null &&
+    !customMethodImport.isLoading &&
+    customMethodImport.isResolved;
+
 
   const applyJsonPayload = async (
     nextPayload: Record<string, unknown>,
@@ -386,36 +495,99 @@ const existingConflictRequest =
       parseImportedBackendRequests(nextPayload);
 
     const nextBackendImportState = backendImport.initialize(
-        importedBackendRequests,
-        existingBackendRequests,
-      );
+      importedBackendRequests,
+      existingBackendRequests,
+    );
 
     const nextVariableResolutions =
-  variableImport.rebuildResolutions(
-    nextPayload,
-    nextBackendImportState.resolutions,
-    platformVariables,
-    variableImport.resolutions,
-  );
+      variableImport.rebuildResolutions(
+        nextPayload,
+        nextBackendImportState.resolutions,
+        platformVariables,
+        variableImport.resolutions,
+      );
 
     setParsedPayload(nextPayload);
+
     try {
-  await customMethodImport.refresh(nextPayload);
-} catch (error) {
-  message.error(
-    getApiErrorMessage(
-      error,
-      'Не удалось обновить список сценариев',
-    ),
-  );
-  return;
-}
+      await customMethodImport.refresh(nextPayload);
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось обновить список сценариев',
+        ),
+      );
+      return;
+    }
+
     variableImport.setResolutions(nextVariableResolutions);
 
     message.success(
       'JSON применён. Зависимости сценария пересчитаны.',
     );
   };
+
+
+  const handleUseExistingWorkspaceSaved = (
+    draft: UseExistingBackendRequestDraft,
+  ) => {
+    if (!parsedPayload) {
+      return;
+    }
+
+    try {
+      const renameReplacements =
+        getUseExistingRenameReplacements(draft);
+
+      const payloadAfterRename =
+        renameReplacements.length > 0
+          ? replaceVariableNamesInPayload(
+              parsedPayload,
+              renameReplacements,
+            )
+          : parsedPayload;
+
+      const nextState = backendImport.saveUseExisting(draft);
+
+      if (!nextState) {
+        return;
+      }
+
+      const allMigrations =
+        getAllScenarioVariableMigrations(
+          nextState.resolutions,
+        );
+
+      const nextPayload = applyMigrationsToPayload(
+        payloadAfterRename,
+        allMigrations,
+      );
+
+      setParsedPayload(nextPayload);
+
+      variableImport.setResolutions((currentResolutions) =>
+        variableImport.rebuildResolutions(
+          nextPayload,
+          nextState.resolutions,
+          platformVariables,
+          currentResolutions,
+        ),
+      );
+
+      message.success(
+        `Будет использован существующий backend-метод «${existingConflictRequest?.name ?? draft.existingBackendRequestId}».`,
+      );
+    } catch (error) {
+      message.error(
+        getApiErrorMessage(
+          error,
+          'Не удалось применить изменения переменных сценария',
+        ),
+      );
+    }
+  };
+
 
   const createScenario = async (
     values: CreateScenarioFormValues,
@@ -450,17 +622,17 @@ const existingConflictRequest =
       setIsCreating(true);
 
       const createdScenario = await persistScenarioImport({
-  payload: parsedPayload,
-  backendResolutions: backendImport.state.resolutions,
-  variableResolutions: variableImport.resolutions,
-  customMethodResolutions:
-  customMethodImport.resolutions,
-  values: {
-    name: values.name.trim(),
-    description: values.description.trim(),
-    tagIds: values.tagIds.map(Number),
-  },
-});
+        payload: parsedPayload,
+        backendResolutions: backendImport.state.resolutions,
+        variableResolutions: variableImport.resolutions,
+        customMethodResolutions:
+          customMethodImport.resolutions,
+        values: {
+          name: values.name.trim(),
+          description: values.description.trim(),
+          tagIds: values.tagIds.map(Number),
+        },
+      });
 
       message.success(
         'Сценарий, backend-методы, переменные и связи сохранены',
@@ -480,6 +652,7 @@ const existingConflictRequest =
       setIsCreating(false);
     }
   };
+
 
   return (
     <main className={styles.page}>
@@ -562,47 +735,56 @@ const existingConflictRequest =
                       />
                     )}
 
-                    {selectedFile && customMethodImport.isLoading && (
-                      <Alert
-                        type="info"
-                        showIcon
-                        style={{ marginBottom: 24 }}
-                        message="Проверяем переиспользуемые сценарии"
-                      />
-                    )}
+                    {selectedFile &&
+                      customMethodImport.isLoading && (
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ marginBottom: 24 }}
+                          message="Проверяем переиспользуемые сценарии"
+                        />
+                      )}
 
-                    {selectedFile && !customMethodImport.isLoading && (
-                      <Alert
-                        type={
-                          isCustomMethodImportResolved
-                            ? 'success'
-                            : 'warning'
-                        }
-                        showIcon
-                        style={{ marginBottom: 24 }}
-                        message={
-                          isCustomMethodImportResolved
-                            ? 'Переиспользуемые сценарии разрешены'
-                            : 'Нужно разрешить переиспользуемые сценарии'
-                        }
-                        description={
-                          isCustomMethodImportResolved
-                            ? `Всего: ${customMethodImport.resolutions.length}. Найдено автоматически: ${existingCustomMethodsCount}. Выбрано вручную: ${selectedCustomMethodsCount}.`
-                            : `Не найдено сценариев: ${unresolvedCustomMethods.length}. Выберите существующие сценарии или создайте недостающие и нажмите «Проверить снова».`
-                        }
-                      />
-                    )}
+                    {selectedFile &&
+                      !customMethodImport.isLoading && (
+                        <Alert
+                          type={
+                            isCustomMethodImportResolved
+                              ? 'success'
+                              : 'warning'
+                          }
+                          showIcon
+                          style={{ marginBottom: 24 }}
+                          message={
+                            isCustomMethodImportResolved
+                              ? 'Переиспользуемые сценарии разрешены'
+                              : 'Нужно разрешить переиспользуемые сценарии'
+                          }
+                          description={
+                            isCustomMethodImportResolved
+                              ? `Всего: ${customMethodImport.resolutions.length}. Найдено автоматически: ${existingCustomMethodsCount}. Выбрано вручную: ${selectedCustomMethodsCount}.`
+                              : `Не найдено сценариев: ${unresolvedCustomMethods.length}. Выберите существующие сценарии или создайте недостающие и нажмите «Проверить снова».`
+                          }
+                        />
+                      )}
 
-                    {selectedFile && !customMethodImport.isLoading && (
-                      <ScenarioCustomMethodTable
-                        resolutions={customMethodImport.resolutions}
-                        availableScenarios={
-                          customMethodImport.availableScenarios
-                        }
-                        disabled={isCreating || isParsingFile}
-                        onSelectScenario={customMethodImport.selectScenario}
-                      />
-                    )}
+                    {selectedFile &&
+                      !customMethodImport.isLoading && (
+                        <ScenarioCustomMethodTable
+                          resolutions={
+                            customMethodImport.resolutions
+                          }
+                          availableScenarios={
+                            customMethodImport.availableScenarios
+                          }
+                          disabled={
+                            isCreating || isParsingFile
+                          }
+                          onSelectScenario={
+                            customMethodImport.selectScenario
+                          }
+                        />
+                      )}
 
                     {selectedFile && isVariablesLoading && (
                       <Alert
@@ -637,35 +819,37 @@ const existingConflictRequest =
 
                     {selectedFile && !isVariablesLoading && (
                       <CreateVariableTable
-  resolutions={variableImport.resolutions}
-  platformVariables={platformVariables}
-  disabled={isCreating || isParsingFile}
-  onSelectPlatformVariable={
-    variableImport.selectPlatformVariable
-  }
-  onCreateUserVariable={
-    variableImport.markUserVariableForCreation
-  }
-  onResetResolution={
-    variableImport.resetVariableResolution
-  }
-  onChangeVariableType={
-    variableImport.changeVariableType
-  }
-  onChangeVariableValue={
-    variableImport.changeVariableValue
-  }
-  onDeleteVariable={variableImport.deleteVariable}
-  getRelatedScenarioUsages={
-    relatedScenarioVariableUsages.getUsages
-  }
-  isRelatedScenarioVariablesLoading={
-  relatedScenarioVariableUsages.isLoading
-}
-relatedScenarioVariablesError={
-  relatedScenarioVariableUsages.error
-}
-/>
+                        resolutions={variableImport.resolutions}
+                        platformVariables={platformVariables}
+                        disabled={isCreating || isParsingFile}
+                        onSelectPlatformVariable={
+                          variableImport.selectPlatformVariable
+                        }
+                        onCreateUserVariable={
+                          variableImport.markUserVariableForCreation
+                        }
+                        onResetResolution={
+                          variableImport.resetVariableResolution
+                        }
+                        onChangeVariableType={
+                          variableImport.changeVariableType
+                        }
+                        onChangeVariableValue={
+                          variableImport.changeVariableValue
+                        }
+                        onDeleteVariable={
+                          variableImport.deleteVariable
+                        }
+                        getRelatedScenarioUsages={
+                          relatedScenarioVariableUsages.getUsages
+                        }
+                        isRelatedScenarioVariablesLoading={
+                          relatedScenarioVariableUsages.isLoading
+                        }
+                        relatedScenarioVariablesError={
+                          relatedScenarioVariableUsages.error
+                        }
+                      />
                     )}
 
                     <Form.Item
@@ -784,49 +968,54 @@ relatedScenarioVariablesError={
 
       {activeConflict && existingConflictRequest && (
         <BackendRequestDiffModal
-          open={!backendImport.isMergeWorkspaceOpen}
+          open={
+            !backendImport.isMergeWorkspaceOpen &&
+            !backendImport.isUseExistingWorkspaceOpen
+          }
           existingRequest={existingConflictRequest}
           importedRequest={activeConflict}
           onCancelImport={cancelImport}
-          onUseExisting={() => {
-  const nextState = backendImport.useExisting();
-
-  if (!nextState || !parsedPayload) {
-    return;
-  }
-
-  variableImport.setResolutions((currentResolutions) =>
-    variableImport.rebuildResolutions(
-      parsedPayload,
-      nextState.resolutions,
-      platformVariables,
-      currentResolutions,
-    ),
-  );
-}}
+          onOpenUseExistingWorkspace={
+            backendImport.openUseExistingWorkspace
+          }
           onRenameImported={() => {
-  const result = backendImport.renameImported();
+            const result = backendImport.renameImported();
 
-  if (!result || !parsedPayload) {
-    return;
-  }
+            if (!result || !parsedPayload) {
+              return;
+            }
 
-  variableImport.setResolutions((currentResolutions) =>
-    variableImport.rebuildResolutions(
-      parsedPayload,
-      result.nextState.resolutions,
-      platformVariables,
-      currentResolutions,
-    ),
-  );
+            variableImport.setResolutions(
+              (currentResolutions) =>
+                variableImport.rebuildResolutions(
+                  parsedPayload,
+                  result.nextState.resolutions,
+                  platformVariables,
+                  currentResolutions,
+                ),
+            );
 
-  message.info(
-    `Импортируемый метод будет создан как «${result.nextName}»`,
-  );
-}}
+            message.info(
+              `Импортируемый метод будет создан как «${result.nextName}»`,
+            );
+          }}
           onOpenMergeWorkspace={backendImport.openMergeWorkspace}
         />
       )}
+
+      {activeConflict &&
+        existingConflictRequest &&
+        parsedPayload && (
+          <UseExistingBackendRequestWorkspace
+            open={backendImport.isUseExistingWorkspaceOpen}
+            existingRequest={existingConflictRequest}
+            importedRequest={activeConflict}
+            payload={parsedPayload}
+            disabled={isCreating || isParsingFile}
+            onCancel={backendImport.closeUseExistingWorkspace}
+            onSaved={handleUseExistingWorkspaceSaved}
+          />
+        )}
 
       {activeConflict && existingConflictRequest && (
         <BackendRequestMergeWorkspace
@@ -835,51 +1024,66 @@ relatedScenarioVariablesError={
           importedRequest={activeConflict}
           onCancel={backendImport.closeMergeWorkspace}
           onSaved={(mergeDraft) => {
-  const nextState = backendImport.saveMerged(mergeDraft);
+            const nextState = backendImport.saveMerged(
+              mergeDraft,
+            );
 
-  if (!nextState || !parsedPayload) {
-    return;
-  }
+            if (!nextState || !parsedPayload) {
+              return;
+            }
 
-  variableImport.setResolutions((currentResolutions) =>
-    variableImport.rebuildResolutions(
-      parsedPayload,
-      nextState.resolutions,
-      platformVariables,
-      currentResolutions,
-    ),
-  );
-}}
+            const allMigrations =
+              getAllScenarioVariableMigrations(
+                nextState.resolutions,
+              );
+
+            const nextPayload = applyMigrationsToPayload(
+              parsedPayload,
+              allMigrations,
+            );
+
+            setParsedPayload(nextPayload);
+
+            variableImport.setResolutions(
+              (currentResolutions) =>
+                variableImport.rebuildResolutions(
+                  nextPayload,
+                  nextState.resolutions,
+                  platformVariables,
+                  currentResolutions,
+                ),
+            );
+          }}
         />
       )}
 
       <MissingScenarioCustomMethodsModal
-  open={customMethodImport.isMissingModalOpen}
-  missingMethodNames={
-    customMethodImport.unresolvedMethodNames
-  }
-  isRefreshing={customMethodImport.isLoading}
-  onClose={customMethodImport.closeMissingModal}
-  onOpenScenarioCreate={
-    customMethodImport.openScenarioCreateInNewTab
-  }
-  onRefresh={() => {
-    if (!parsedPayload) {
-      return;
-    }
+        open={customMethodImport.isMissingModalOpen}
+        missingMethodNames={
+          customMethodImport.unresolvedMethodNames
+        }
+        isRefreshing={customMethodImport.isLoading}
+        onClose={customMethodImport.closeMissingModal}
+        onOpenScenarioCreate={
+          customMethodImport.openScenarioCreateInNewTab
+        }
+        onRefresh={() => {
+          if (!parsedPayload) {
+            return;
+          }
 
-    void customMethodImport.refresh(parsedPayload).catch(
-      (error: unknown) => {
-        message.error(
-          getApiErrorMessage(
-            error,
-            'Не удалось обновить список сценариев',
-          ),
-        );
-      },
-    );
-  }}
-/>
+          void customMethodImport.refresh(parsedPayload).catch(
+            (error: unknown) => {
+              message.error(
+                getApiErrorMessage(
+                  error,
+                  'Не удалось обновить список сценариев',
+                ),
+              );
+            },
+          );
+        }}
+      />
     </main>
   );
 }

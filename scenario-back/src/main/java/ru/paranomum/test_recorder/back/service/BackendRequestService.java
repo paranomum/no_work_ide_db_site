@@ -3,7 +3,6 @@ package ru.paranomum.test_recorder.back.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,13 +30,13 @@ import ru.paranomum.test_recorder.back.repository.ScenarioRepository;
 import ru.paranomum.test_recorder.back.repository.ScenarioVariableRepository;
 import ru.paranomum.test_recorder.back.repository.VariableRepository;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -187,7 +186,6 @@ public class BackendRequestService {
 	) {
 		return merge(backendRequestId, request);
 	}
-
 
 	@Transactional
 	public BackendRequestResponse merge(
@@ -381,14 +379,31 @@ public class BackendRequestService {
 			List<ScenarioVariableMigrationRequest> migrations,
 			Set<Long> linkedScenarioIds
 	) {
+		if (migrations == null || migrations.isEmpty()) {
+			return;
+		}
+
 		Set<String> migrationVariableNames = new HashSet<>();
 
-		for (ScenarioVariableMigrationRequest migration : migrations) {
-			String variableName = normalizeRequired(
-					migration.variable().name()
-			).toLowerCase(Locale.ROOT);
+		/*
+		 * Храним следующую свободную position в памяти для каждого
+		 * сценария только в пределах текущего merge.
+		 *
+		 * Это предотвращает выдачу одинаковой position нескольким
+		 * новым ScenarioVariable до того, как Hibernate выполнит flush.
+		 */
+		Map<Long, Integer> nextVariablePositionByScenarioId =
+				new HashMap<>();
 
-			if (!migrationVariableNames.add(variableName)) {
+		for (ScenarioVariableMigrationRequest migration : migrations) {
+			String normalizedVariableName = normalizeRequired(
+					migration.variable().name()
+			);
+
+			String variableKey = normalizedVariableName
+					.toLowerCase(Locale.ROOT);
+
+			if (!migrationVariableNames.add(variableKey)) {
 				throw new IllegalArgumentException(
 						"Переменная %s указана в миграции несколько раз"
 								.formatted(migration.variable().name())
@@ -424,7 +439,8 @@ public class BackendRequestService {
 				upsertScenarioVariable(
 						valueEntry.getKey(),
 						variable,
-						valueEntry.getValue()
+						valueEntry.getValue(),
+						nextVariablePositionByScenarioId
 				);
 			}
 		}
@@ -441,13 +457,12 @@ public class BackendRequestService {
 		);
 		boolean isUserVariable = migration.variable().isUserVariable();
 
-		return variableRepository.findAllByOrderByNameAsc()
-				.stream()
-				.filter(variable -> variable.getName()
-						.equalsIgnoreCase(variableName))
-				.findFirst()
+		return variableRepository.findByNameIgnoreCase(variableName)
 				.map(existingVariable -> {
-					if (existingVariable.isUserVariable() != isUserVariable) {
+					if (
+							existingVariable.isUserVariable()
+									!= isUserVariable
+					) {
 						throw new IllegalArgumentException(
 								"Тип переменной %s не совпадает с уже "
 										+ "существующей переменной"
@@ -459,7 +474,7 @@ public class BackendRequestService {
 				})
 				.orElseGet(() -> {
 					try {
-						return variableRepository.save(
+						return variableRepository.saveAndFlush(
 								new Variable(
 										variableName,
 										variableDescription,
@@ -467,7 +482,11 @@ public class BackendRequestService {
 								)
 						);
 					} catch (DataIntegrityViolationException exception) {
-						throw new VariableAlreadyExistsException(variableName);
+						return variableRepository
+								.findByNameIgnoreCase(variableName)
+								.orElseThrow(() -> new VariableAlreadyExistsException(
+										variableName
+								));
 					}
 				});
 	}
@@ -475,7 +494,8 @@ public class BackendRequestService {
 	private void upsertScenarioVariable(
 			Long scenarioId,
 			Variable variable,
-			String defaultValue
+			String defaultValue,
+			Map<Long, Integer> nextVariablePositionByScenarioId
 	) {
 		ScenarioVariableId id = new ScenarioVariableId(
 				scenarioId,
@@ -487,14 +507,27 @@ public class BackendRequestService {
 						scenarioVariable -> scenarioVariable.updateDefaultValue(
 								defaultValue
 						),
-						() -> scenarioVariableRepository.save(
-								new ScenarioVariable(
-										scenarioId,
-										variable.getId(),
-										defaultValue,
-										findNextScenarioVariablePosition(scenarioId)
-								)
-						)
+						() -> {
+							int nextPosition =
+									nextVariablePositionByScenarioId.computeIfAbsent(
+											scenarioId,
+											this::findNextScenarioVariablePosition
+									);
+
+							scenarioVariableRepository.save(
+									new ScenarioVariable(
+											scenarioId,
+											variable.getId(),
+											defaultValue,
+											nextPosition
+									)
+							);
+
+							nextVariablePositionByScenarioId.put(
+									scenarioId,
+									nextPosition + 1
+							);
+						}
 				);
 	}
 

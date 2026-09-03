@@ -1,5 +1,6 @@
 import type {
   BackendRequestDto,
+  ScenarioVariableMigration,
 } from '../../backendRequestMerge/model/backendRequestMerge.types';
 import type {
   ImportedScenarioVariable,
@@ -13,6 +14,10 @@ import type {
 import type {
   VariableDto,
 } from '../../../shared/types/variable';
+
+function normalizeVariableName(name: string): string {
+  return name.trim().toLocaleLowerCase('ru-RU');
+}
 
 export function hasVariableValue(value: string): boolean {
   return value.trim().length > 0;
@@ -84,8 +89,8 @@ export function createVariableResolution(
   const platformVariableWithSameName = platformVariables.find(
     (variable) =>
       variable.isUserVariable &&
-      variable.name.toLocaleLowerCase('ru-RU') ===
-        importedVariable.name.toLocaleLowerCase('ru-RU'),
+      normalizeVariableName(variable.name) ===
+        normalizeVariableName(importedVariable.name),
   );
 
   if (platformVariableWithSameName) {
@@ -108,12 +113,25 @@ export function rebuildVariableResolutions(
   resolvedBackendRequests: BackendRequestDto[],
   platformVariables: VariableDto[],
   currentResolutions: VariableResolution[],
+  migrations: ScenarioVariableMigration[] = [],
 ): VariableResolution[] {
   const previousResolutionsByName = new Map(
     currentResolutions.map((resolution) => [
-      resolution.importedVariable.name.toLocaleLowerCase('ru-RU'),
+      normalizeVariableName(resolution.importedVariable.name),
       resolution,
     ]),
+  );
+
+  const migrationsByName = new Map(
+    migrations
+      .filter(
+        (migration) =>
+          migration.variable.name.trim().length > 0,
+      )
+      .map((migration) => [
+        normalizeVariableName(migration.variable.name),
+        migration,
+      ]),
   );
 
   const importedVariables = parseImportedScenarioVariables(
@@ -121,13 +139,28 @@ export function rebuildVariableResolutions(
     resolvedBackendRequests,
   );
 
-  return importedVariables.map((importedVariable) =>
-    createVariableResolution(
-      importedVariable,
+  return importedVariables.map((importedVariable) => {
+    const migration = migrationsByName.get(
+      normalizeVariableName(importedVariable.name),
+    );
+
+    const mergedImportedVariable = migration
+  ? {
+      ...importedVariable,
+      name: migration.variable.name.trim(),
+      defaultValue: migration.variable.isUserVariable
+        ? ''
+        : migration.importedScenarioDefaultValue,
+      isUserVariable: migration.variable.isUserVariable,
+    }
+  : importedVariable;
+
+    return createVariableResolution(
+      mergedImportedVariable,
       platformVariables,
       previousResolutionsByName.get(
-        importedVariable.name.toLocaleLowerCase('ru-RU'),
+        normalizeVariableName(mergedImportedVariable.name),
       ),
-    ),
-  );
+    );
+  });
 }

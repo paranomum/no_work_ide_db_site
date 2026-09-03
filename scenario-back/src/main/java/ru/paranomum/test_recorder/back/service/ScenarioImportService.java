@@ -121,7 +121,7 @@ public class ScenarioImportService {
 				customMethodNameReplacements
 		);
 
-		validatePayloadVariableDeclarations(
+		synchronizePayloadVariables(
 				payload,
 				variablesByImportedName
 		);
@@ -292,21 +292,15 @@ public class ScenarioImportService {
 			);
 		}
 
-		if (variableRepository.existsByNameIgnoreCase(name)) {
-			throw new VariableAlreadyExistsException(name);
-		}
-
-		try {
-			return variableRepository.save(
-					new Variable(
-							name,
-							normalizeDescription(request.description()),
-							false
-					)
-			);
-		} catch (org.springframework.dao.DataIntegrityViolationException exception) {
-			throw new VariableAlreadyExistsException(name);
-		}
+		return variableRepository
+				.findByNameIgnoreCase(name)
+				.orElseGet(() -> variableRepository.save(
+						new Variable(
+								name,
+								normalizeDescription(request.description()),
+								false
+						)
+				));
 	}
 
 	private Variable findVariable(Long id) {
@@ -826,57 +820,57 @@ public class ScenarioImportService {
 		);
 	}
 
-	private void validatePayloadVariableDeclarations(
+	private void synchronizePayloadVariables(
 			ObjectNode payload,
 			Map<String, ResolvedVariable> variablesByImportedName
 	) {
-		JsonNode variablesNode = payload.get("variables");
+		ArrayNode variables = objectMapper.createArrayNode();
 
-		if (variablesNode == null || !variablesNode.isArray()) {
-			if (!variablesByImportedName.isEmpty()) {
-				throw new IllegalArgumentException(
-						"Payload не содержит variables[] для import resolutions"
-				);
-			}
-
-			return;
-		}
-
-		Set<String> declaredVariableNames = new HashSet<>();
-
-		for (JsonNode item : variablesNode) {
-			if (!item.isObject()) {
-				throw new IllegalArgumentException(
-						"Каждый элемент payload.variables должен быть объектом"
-				);
-			}
-
-			String variableName = item.path("name").asText();
-
-			if (variableName.isBlank()) {
-				throw new IllegalArgumentException(
-						"Каждая переменная payload.variables должна иметь name"
-				);
-			}
-
-			if (!declaredVariableNames.add(normalizeKey(variableName))) {
-				throw new IllegalArgumentException(
-						"Переменная в payload.variables указана несколько раз: "
-								+ variableName
-				);
-			}
-		}
-
-		Set<String> resolvedVariableNames = variablesByImportedName.values()
+		variablesByImportedName.values()
 				.stream()
-				.map(resolved -> normalizeKey(resolved.variable().getName()))
-				.collect(Collectors.toSet());
+				.sorted((left, right) -> Integer.compare(
+						left.position(),
+						right.position()
+				))
+				.forEach(resolved -> {
+					if (resolved.defaultValue() == null) {
+						throw new IllegalArgumentException(
+								"defaultValue обязателен для: "
+										+ resolved.importedName()
+						);
+					}
 
-		if (!declaredVariableNames.equals(resolvedVariableNames)) {
-			throw new IllegalArgumentException(
-					"Состав payload.variables не совпадает с variable resolutions"
-			);
-		}
+					if (
+							resolved.position() == null ||
+									resolved.position() < 0
+					) {
+						throw new IllegalArgumentException(
+								"position должен быть неотрицательным для: "
+										+ resolved.importedName()
+						);
+					}
+
+					ObjectNode variable = objectMapper.createObjectNode();
+
+					/*
+					 * Используем итоговое имя из каталога variables:
+					 * оно уже учитывает выбор существующей пользовательской
+					 * переменной и replacement importedName -> platformName.
+					 */
+					variable.put(
+							"name",
+							resolved.variable().getName()
+					);
+
+					variable.put(
+							"value",
+							resolved.defaultValue()
+					);
+
+					variables.add(variable);
+				});
+
+		payload.set("variables", variables);
 	}
 
 	private List<Tag> resolveTags(List<Long> tagIds) {

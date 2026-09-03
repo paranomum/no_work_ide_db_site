@@ -1,5 +1,6 @@
 import type {
   BackendFieldOverride,
+  BackendFormDataItem,
   BackendRequestDto,
   BackendResponseExtractor,
 } from './backendRequestMerge.types';
@@ -241,23 +242,343 @@ export function createScenarioPayloadForSave(
 
   return JSON.stringify(normalizedPayload);
 }
+function getNormalizedBodyType(
+  bodyType: BackendRequestDto['bodyType'],
+): string {
+  return String(bodyType).toUpperCase();
+}
+
+function isFormBodyType(
+  bodyType: BackendRequestDto['bodyType'],
+): boolean {
+  const normalizedBodyType = getNormalizedBodyType(bodyType);
+
+  return (
+    normalizedBodyType === 'FORM_URLENCODED' ||
+    normalizedBodyType === 'FORM_DATA'
+  );
+}
+
+function parseJson(
+  value: string | null | undefined,
+): unknown | null {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function areJsonValuesEqual(
+  left: unknown,
+  right: unknown,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+
+  if (typeof left !== typeof right) {
+    return false;
+  }
+
+  if (typeof left !== 'object' || typeof right !== 'object') {
+    return left === right;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) {
+      return false;
+    }
+
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((item, index) =>
+      areJsonValuesEqual(item, right[index]),
+    );
+  }
+
+  if (!isRecord(left) || !isRecord(right)) {
+    return false;
+  }
+
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+
+  if (
+    leftKeys.length !== rightKeys.length ||
+    leftKeys.some((key, index) => key !== rightKeys[index])
+  ) {
+    return false;
+  }
+
+  return leftKeys.every((key) =>
+    areJsonValuesEqual(left[key], right[key]),
+  );
+}
+
+function areRequestBodiesEqual(
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+): boolean {
+  const leftText = leftValue ?? '';
+  const rightText = rightValue ?? '';
+
+  const leftJson = parseJson(leftText);
+  const rightJson = parseJson(rightText);
+
+  if (leftJson !== null && rightJson !== null) {
+    return areJsonValuesEqual(leftJson, rightJson);
+  }
+
+  return leftText === rightText;
+}
+
+function areJsonStructuresEqual(
+  left: unknown,
+  right: unknown,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+
+  if (typeof left !== typeof right) {
+    return false;
+  }
+
+  if (typeof left !== 'object' || typeof right !== 'object') {
+    /*
+     * Для capturedResponseBody значение неважно,
+     * но тип primitive должен совпадать.
+     */
+    return true;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) {
+      return false;
+    }
+
+    /*
+     * Массив — это шаблон структуры. Длину не сравниваем:
+     * ответ одного API может содержать разное число объектов.
+     */
+    if (left.length === 0 || right.length === 0) {
+      return true;
+    }
+
+    return areJsonStructuresEqual(left[0], right[0]);
+  }
+
+  if (!isRecord(left) || !isRecord(right)) {
+    return false;
+  }
+
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+
+  if (
+    leftKeys.length !== rightKeys.length ||
+    leftKeys.some((key, index) => key !== rightKeys[index])
+  ) {
+    return false;
+  }
+
+  return leftKeys.every((key) =>
+    areJsonStructuresEqual(left[key], right[key]),
+  );
+}
+
+function areResponseBodiesStructurallyEqual(
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+): boolean {
+  const leftText = leftValue ?? '';
+  const rightText = rightValue ?? '';
+
+  if (!leftText.trim() && !rightText.trim()) {
+    return true;
+  }
+
+  const leftJson = parseJson(leftText);
+  const rightJson = parseJson(rightText);
+
+  if (leftJson === null || rightJson === null) {
+    return leftText === rightText;
+  }
+
+  return areJsonStructuresEqual(leftJson, rightJson);
+}
+
+function parseFormData(
+  value: string | null | undefined,
+): BackendFormDataItem[] | null {
+  if (!value?.trim()) {
+    return [];
+  }
+
+  try {
+    const parsedValue: unknown = JSON.parse(value);
+
+    if (!Array.isArray(parsedValue)) {
+      return null;
+    }
+
+    const items = parsedValue.filter(isBackendFormDataItem);
+
+    return items.length === parsedValue.length ? items : null;
+  } catch {
+    return null;
+  }
+}
+
+function isBackendFormDataItem(
+  value: unknown,
+): value is BackendFormDataItem {
+  return (
+    isRecord(value) &&
+    typeof value.key === 'string' &&
+    typeof value.value === 'string'
+  );
+}
+
+function areFormDataEqual(
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+): boolean {
+  const leftItems = parseFormData(leftValue);
+  const rightItems = parseFormData(rightValue);
+
+  if (leftItems === null || rightItems === null) {
+    return (leftValue ?? '') === (rightValue ?? '');
+  }
+
+  const normalize = (items: BackendFormDataItem[]): string[] =>
+    items
+      .map((item) => `${item.key.trim()}\u0000${item.value}`)
+      .sort();
+
+  const leftNormalized = normalize(leftItems);
+  const rightNormalized = normalize(rightItems);
+
+  return (
+    leftNormalized.length === rightNormalized.length &&
+    leftNormalized.every(
+      (item, index) => item === rightNormalized[index],
+    )
+  );
+}
+
+function areFieldOverridesEqual(
+  leftValue: string,
+  rightValue: string,
+): boolean {
+  const normalize = (value: string): string[] => {
+    try {
+      const parsedValue: unknown = JSON.parse(value);
+
+      if (!Array.isArray(parsedValue)) {
+        return [value];
+      }
+
+      return parsedValue
+        .filter(isRecord)
+        .map((item) =>
+          JSON.stringify({
+            fieldPath: asString(item.fieldPath),
+            method: asString(item.method),
+            methodArg: asString(item.methodArg),
+            type: asString(item.type, 'string'),
+          }),
+        )
+        .sort();
+    } catch {
+      return [value];
+    }
+  };
+
+  const leftNormalized = normalize(leftValue);
+  const rightNormalized = normalize(rightValue);
+
+  return (
+    leftNormalized.length === rightNormalized.length &&
+    leftNormalized.every(
+      (item, index) => item === rightNormalized[index],
+    )
+  );
+}
+
+function areResponseExtractorsEqual(
+  leftValue: string,
+  rightValue: string,
+): boolean {
+  const normalize = (value: string): string[] => {
+    try {
+      const parsedValue: unknown = JSON.parse(value);
+
+      if (!Array.isArray(parsedValue)) {
+        return [value];
+      }
+
+      return parsedValue
+        .filter(isRecord)
+        .map((item) =>
+          JSON.stringify({
+            fieldPath: asString(item.fieldPath),
+            variableName: asString(item.variableName),
+          }),
+        )
+        .sort();
+    } catch {
+      return [value];
+    }
+  };
+
+  const leftNormalized = normalize(leftValue);
+  const rightNormalized = normalize(rightValue);
+
+  return (
+    leftNormalized.length === rightNormalized.length &&
+    leftNormalized.every(
+      (item, index) => item === rightNormalized[index],
+    )
+  );
+}
 
 export function areBackendRequestsEqual(
   left: BackendRequestDto,
   right: BackendRequestDto,
 ): boolean {
+  const leftBodyType = getNormalizedBodyType(left.bodyType);
+  const rightBodyType = getNormalizedBodyType(right.bodyType);
+
+  const areBodiesEqual =
+    isFormBodyType(left.bodyType) || isFormBodyType(right.bodyType)
+      ? areFormDataEqual(left.formDataJson, right.formDataJson)
+      : areRequestBodiesEqual(left.requestBody, right.requestBody);
+
   return (
     left.url === right.url &&
     left.httpMethod === right.httpMethod &&
-    (left.requestBody ?? '') === (right.requestBody ?? '') &&
-    left.requestHeadersJson === right.requestHeadersJson &&
-    (left.capturedResponseBody ?? '') ===
-      (right.capturedResponseBody ?? '') &&
+    leftBodyType === rightBodyType &&
     left.token === right.token &&
-    left.bodyType === right.bodyType &&
-    left.formDataJson === right.formDataJson &&
-    left.fieldOverridesJson === right.fieldOverridesJson &&
-    left.responseExtractorsJson ===
-      right.responseExtractorsJson
+    areBodiesEqual &&
+    areResponseBodiesStructurallyEqual(
+      left.capturedResponseBody,
+      right.capturedResponseBody,
+    ) &&
+    areFieldOverridesEqual(
+      left.fieldOverridesJson,
+      right.fieldOverridesJson,
+    ) &&
+    areResponseExtractorsEqual(
+      left.responseExtractorsJson,
+      right.responseExtractorsJson,
+    )
   );
 }

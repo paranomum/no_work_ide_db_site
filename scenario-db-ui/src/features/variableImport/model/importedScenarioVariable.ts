@@ -33,6 +33,7 @@ interface FieldOverrideRaw extends JsonRecord {
 }
 
 interface ResponseExtractorRaw extends JsonRecord {
+  fieldPath?: unknown;
   variableName?: unknown;
 }
 
@@ -117,18 +118,26 @@ function addTextVariables(
 
 function addExtractorVariable(
   variableMap: Map<string, ParsedVariable>,
-  name: string,
+  variableName: string,
+  fieldPath: string,
   nextPosition: () => number,
 ): void {
-  const normalizedName = normalizeVariableName(name);
+  const normalizedName = normalizeVariableName(variableName);
+  const normalizedFieldPath = fieldPath.trim();
 
-  if (!normalizedName) {
+  if (!normalizedName || !normalizedFieldPath) {
     return;
   }
 
   const existing = variableMap.get(normalizedName);
 
   if (existing) {
+    /*
+     * Переменная уже определена в payload.variables или найдена
+     * в другом месте сценария. Не меняем её значение здесь:
+     * это защищает импортированное значение от затирания
+     * при выборе существующего backend-метода.
+     */
     existing.sources.add('responseExtractor');
     existing.isProducedByExtractor = true;
     return;
@@ -136,7 +145,7 @@ function addExtractorVariable(
 
   variableMap.set(normalizedName, {
     name: normalizedName,
-    defaultValue: '',
+    defaultValue: `json(${normalizedFieldPath})`,
     position: nextPosition(),
     sources: new Set(['responseExtractor']),
     isProducedByExtractor: true,
@@ -148,6 +157,15 @@ function collectVariablesFromBackendRequest(
   request: BackendRequestDto,
   nextPosition: () => number,
 ): void {
+
+  addTextVariables(
+  variables,
+  request.url,
+  'backendRequest',
+  nextPosition,
+);
+
+
   addTextVariables(
     variables,
     request.requestBody,
@@ -203,16 +221,17 @@ function collectVariablesFromBackendRequest(
     });
 
   parseJsonArray(request.responseExtractorsJson)
-    .filter(isRecord)
-    .forEach((item) => {
-      const extractor = item as ResponseExtractorRaw;
+  .filter(isRecord)
+  .forEach((item) => {
+    const extractor = item as ResponseExtractorRaw;
 
-      addExtractorVariable(
-        variables,
-        asString(extractor.variableName),
-        nextPosition,
-      );
-    });
+    addExtractorVariable(
+      variables,
+      asString(extractor.variableName),
+      asString(extractor.fieldPath),
+      nextPosition,
+    );
+  });
 }
 
 export function parseImportedScenarioVariables(

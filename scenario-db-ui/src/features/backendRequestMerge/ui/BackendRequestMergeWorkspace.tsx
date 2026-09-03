@@ -25,7 +25,10 @@ import type {
 import type {
   BackendRequestMergeDraft,
 } from '../model/backendRequestImport.types';
-import { BackendRequestDtoEditor } from './BackendRequestDtoEditor';
+import {
+  BackendRequestDtoEditor,
+  type BackendRequestEditorTab,
+} from './BackendRequestDtoEditor';
 import { ScenarioVariableMigrationsEditor } from './ScenarioVariableMigrationsEditor';
 
 interface BackendRequestMergeWorkspaceProps {
@@ -75,10 +78,13 @@ export function BackendRequestMergeWorkspace({
   >([]);
   const [isLoadingUsage, setIsLoadingUsage] = useState(false);
 
-  useEffect(() => {
-  const backendRequestId = existingRequest.id;
+    const [activeEditorTab, setActiveEditorTab] =
+    useState<BackendRequestEditorTab>('body');
 
-  if (!open || typeof backendRequestId !== 'number') {
+const existingRequestId = existingRequest.id;
+
+useEffect(() => {
+  if (!open || typeof existingRequestId !== 'number') {
     return;
   }
 
@@ -89,16 +95,23 @@ export function BackendRequestMergeWorkspace({
       setIsLoadingUsage(true);
 
       const loadedUsage = await loadBackendRequestUsage(
-        backendRequestId,
+        existingRequestId,
       );
 
-      if (isMounted) {
-        setUsage(loadedUsage);
-        setMergedRequest(
-          createInitialMergedRequest(existingRequest),
-        );
-        setMigrations([]);
+      if (!isMounted) {
+        return;
       }
+
+      setUsage(loadedUsage);
+
+      // Исходный request нужен только для первоначального
+      // заполнения итогового редактора при открытии workspace.
+      setMergedRequest({
+        ...existingRequest,
+      });
+
+      setMigrations([]);
+      setActiveEditorTab('body');
     } catch (error) {
       if (isMounted) {
         message.error(
@@ -120,7 +133,10 @@ export function BackendRequestMergeWorkspace({
   return () => {
     isMounted = false;
   };
-}, [existingRequest, open]);
+  // Перезагрузка usage нужна при открытии или смене метода,
+  // а не при появлении новой object reference.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open, existingRequestId]);
 
   const saveMergeDraft = () => {
   const backendRequestId = existingRequest.id;
@@ -213,10 +229,12 @@ export function BackendRequestMergeWorkspace({
               </Typography.Title>
 
               <BackendRequestDtoEditor
-                value={existingRequest}
-                disabled
-                onChange={() => undefined}
-              />
+              value={existingRequest}
+              disabled
+              activeTab={activeEditorTab}
+              lockTabSelection
+              onChange={() => undefined}
+            />
             </div>
 
             <div>
@@ -226,6 +244,8 @@ export function BackendRequestMergeWorkspace({
 
               <BackendRequestDtoEditor
                 value={mergedRequest}
+                activeTab={activeEditorTab}
+                onActiveTabChange={setActiveEditorTab}
                 onChange={setMergedRequest}
               />
             </div>
@@ -238,6 +258,8 @@ export function BackendRequestMergeWorkspace({
               <BackendRequestDtoEditor
                 value={importedRequest}
                 disabled
+                activeTab={activeEditorTab}
+                lockTabSelection
                 onChange={() => undefined}
               />
             </div>

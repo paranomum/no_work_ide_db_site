@@ -1,0 +1,84 @@
+:root {
+  /*
+   * Семантические цвета различий.
+   * Эти переменные можно повторно применять в таблицах,
+   * карточках, inline-diff, бейджах и других экранах.
+   */
+  --diff-same-background: transparent;
+  --diff-same-border: transparent;
+  --diff-same-text: inherit;
+
+  --diff-different-background: #fff1f0;
+  --diff-different-border: #ff4d4f;
+  --diff-different-text: #a8071a;
+
+  --diff-only-left-background: #fff7e6;
+  --diff-only-left-border: #fa8c16;
+  --diff-only-left-text: #ad4e00;
+
+  --diff-only-right-background: #f6ffed;
+  --diff-only-right-border: #52c41a;
+  --diff-only-right-text: #237804;
+}
+
+.backendDiffLineDifferent {
+  display: block;
+  margin: 0 -4px;
+  padding: 0 4px;
+  color: var(--diff-different-text);
+  background: var(--diff-different-background);
+  box-shadow: inset 3px 0 0 var(--diff-different-border);
+}
+
+.backendDiffLineOnlyLeft {
+  display: block;
+  margin: 0 -4px;
+  padding: 0 4px;
+  color: var(--diff-only-left-text);
+  background: var(--diff-only-left-background);
+  box-shadow: inset 3px 0 0 var(--diff-only-left-border);
+}
+
+.backendDiffLineOnlyRight {
+  display: block;
+  margin: 0 -4px;
+  padding: 0 4px;
+  color: var(--diff-only-right-text);
+  background: var(--diff-only-right-background);
+  box-shadow: inset 3px 0 0 var(--diff-only-right-border);
+}
+
+/*
+ * Класс назначается строке Ant Design Table через rowClassName.
+ * Важный момент: фон задаём td, потому что Ant Design часто
+ * задаёт фон именно ячейкам, а не tr.
+ */
+.backendDiffRowDifferent > td {
+  color: var(--diff-different-text) !important;
+  background: var(--diff-different-background) !important;
+}
+
+.backendDiffRowOnlyLeft > td {
+  color: var(--diff-only-left-text) !important;
+  background: var(--diff-only-left-background) !important;
+}
+
+.backendDiffRowOnlyRight > td {
+  color: var(--diff-only-right-text) !important;
+  background: var(--diff-only-right-background) !important;
+}
+
+/*
+ * При наведении Ant Design не должен скрывать смысловую подсветку.
+ */
+.backendDiffRowDifferent:hover > td {
+  background: var(--diff-different-background) !important;
+}
+
+.backendDiffRowOnlyLeft:hover > td {
+  background: var(--diff-only-left-background) !important;
+}
+
+.backendDiffRowOnlyRight:hover > td {
+  background: var(--diff-only-right-background) !important;
+}

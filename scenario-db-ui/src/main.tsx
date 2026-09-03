@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { ConfigProvider } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import { BrowserRouter } from 'react-router-dom';
-
+import './shared/styles/backendDiff.css';
 import App from './app/App';
 import './styles.css';
 
