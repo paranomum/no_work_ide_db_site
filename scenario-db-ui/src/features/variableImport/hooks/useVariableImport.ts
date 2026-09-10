@@ -19,6 +19,7 @@ import {
 } from '../model/variableImportPlan';
 import {
   removePayloadVariable,
+  renamePayloadVariable,
   replacePayloadVariableReferences,
   updatePayloadVariableValue,
 } from '../model/variablePayloadMutations';
@@ -75,6 +76,10 @@ interface UseVariableImportResult {
     importedVariableName: string,
     replacementVariableName?: string,
   ) => void;
+    renameVariable: (
+    importedVariableName: string,
+    nextVariableName: string,
+  ) => boolean;
 }
 
 
@@ -93,6 +98,9 @@ function getScenarioVariableMigrations(
   ]);
 }
 
+function normalizeVariableName(value: string): string {
+  return value.trim().toLocaleLowerCase('ru-RU');
+}
 
 export function useVariableImport({
   platformVariables,
@@ -353,6 +361,86 @@ export function useVariableImport({
     );
   };
 
+    const renameVariable = (
+    importedVariableName: string,
+    nextVariableName: string,
+  ): boolean => {
+    const normalizedNextVariableName =
+      nextVariableName.trim();
+
+    if (!normalizedNextVariableName) {
+      return false;
+    }
+
+    if (
+      normalizeVariableName(importedVariableName) ===
+      normalizeVariableName(normalizedNextVariableName)
+    ) {
+      return false;
+    }
+
+    const hasDuplicate = resolutions.some(
+      (resolution) =>
+        normalizeVariableName(
+          resolution.importedVariable.name,
+        ) === normalizeVariableName(normalizedNextVariableName),
+    );
+
+    if (hasDuplicate) {
+      return false;
+    }
+
+    replaceBackendResolutions((currentResolutions) =>
+      currentResolutions.map((resolution) =>
+        replaceVariableInBackendResolution(
+          resolution,
+          importedVariableName,
+          normalizedNextVariableName,
+        ),
+      ),
+    );
+
+    setPayload((currentPayload) => {
+      if (!currentPayload) {
+        return currentPayload;
+      }
+
+      const payloadWithReplacedReferences =
+        replacePayloadVariableReferences(
+          currentPayload,
+          importedVariableName,
+          normalizedNextVariableName,
+        );
+
+      return renamePayloadVariable(
+        payloadWithReplacedReferences,
+        importedVariableName,
+        normalizedNextVariableName,
+      );
+    });
+
+    setResolutions((currentResolutions) =>
+      currentResolutions.map((resolution) => {
+        if (
+          resolution.importedVariable.name !==
+          importedVariableName
+        ) {
+          return resolution;
+        }
+
+        return {
+          ...resolution,
+          importedVariable: {
+            ...resolution.importedVariable,
+            name: normalizedNextVariableName,
+          },
+        };
+      }),
+    );
+
+    return true;
+  };
+
   return {
     resolutions,
     unresolvedResolutions,
@@ -365,5 +453,6 @@ export function useVariableImport({
     changeVariableType,
     changeVariableValue,
     deleteVariable,
+    renameVariable,
   };
 }

@@ -1,19 +1,19 @@
 package ru.paranomum.test_recorder.back.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 import ru.paranomum.test_recorder.back.entity.BackendRequest;
 
 @Component
 public class BackendRequestExportMapper {
 
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 
-	public BackendRequestExportMapper(ObjectMapper objectMapper) {
+	public BackendRequestExportMapper(JsonMapper objectMapper) {
 		this.objectMapper = objectMapper;
 	}
 
@@ -103,7 +103,7 @@ public class BackendRequestExportMapper {
 	private JsonNode parseJson(String json, String fieldName) {
 		try {
 			return objectMapper.readTree(json);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Backend-запрос содержит невалидный JSON в поле %s"
 							.formatted(fieldName),

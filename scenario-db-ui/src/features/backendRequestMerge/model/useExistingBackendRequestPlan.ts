@@ -258,6 +258,39 @@ function readFormDataUsages(
 }
 
 
+function unwrapVariableExpression(
+  value: string,
+): string | null {
+  const trimmedValue = value.trim();
+
+  const match = /^\$\{([^}]+)\}$/.exec(trimmedValue);
+
+  if (!match) {
+    return null;
+  }
+
+  const variableName = (match[1] ?? '').trim();
+
+  return variableName || null;
+}
+
+function getUseVariableName(
+  methodArg: string,
+): string | null {
+  const trimmedMethodArg = methodArg.trim();
+
+  if (!trimmedMethodArg) {
+    return null;
+  }
+
+  // Поддерживает оба формата:
+  // "manager.uuid" и "${manager.uuid}".
+  return (
+    unwrapVariableExpression(trimmedMethodArg) ??
+    trimmedMethodArg
+  );
+}
+
 function readFieldOverrideUsages(
   fieldOverridesJson: string,
   usagesByVariableName: Map<
@@ -271,7 +304,12 @@ function readFieldOverrideUsages(
     .forEach((item) => {
       const fieldPath =
         typeof item.fieldPath === 'string'
-          ? item.fieldPath
+          ? item.fieldPath.trim()
+          : '';
+
+      const method =
+        typeof item.method === 'string'
+          ? item.method.trim()
           : '';
 
       const methodArg =
@@ -279,14 +317,22 @@ function readFieldOverrideUsages(
           ? item.methodArg.trim()
           : '';
 
-      if (!methodArg) {
+      // Обрабатываем только осознанную ссылку на переменную.
+      // useUuid и все остальные field override-методы игнорируются.
+      if (method !== 'use variable') {
+        return;
+      }
+
+      const variableName = getUseVariableName(methodArg);
+
+      if (!variableName) {
         return;
       }
 
       addUsage(
         usagesByVariableName,
         variableNamesByKey,
-        methodArg,
+        variableName,
         createUsageLocation(
           'field-override',
           `Field override: ${fieldPath || 'поле'}`,

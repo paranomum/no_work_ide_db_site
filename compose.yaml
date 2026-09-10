@@ -1,7 +1,7 @@
 name: test-recorder
 
 services:
-  backend:
+  test-recorder-backend:
     build:
       context: ./scenario-back
       dockerfile: Dockerfile
@@ -14,12 +14,12 @@ services:
       - "8080"
     restart: unless-stopped
 
-  frontend:
+  test-recorder-frontend:
     build:
       context: ./scenario-db-ui
       dockerfile: Dockerfile
     ports:
       - "5174:80"
     depends_on:
-      - backend
+      - test-recorder-backend
     restart: unless-stopped

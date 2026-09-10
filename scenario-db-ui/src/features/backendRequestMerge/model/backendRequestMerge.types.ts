@@ -5,7 +5,6 @@ export type BackendRequestBodyType =
   | 'FORM_DATA'
   | 'RAW';
 
-
 export interface BackendFieldOverride {
   fieldPath: string;
   method: string;
@@ -13,18 +12,15 @@ export interface BackendFieldOverride {
   type: string;
 }
 
-
 export interface BackendResponseExtractor {
   fieldPath: string;
   variableName: string;
 }
 
-
 export interface BackendFormDataItem {
   key: string;
   value: string;
 }
-
 
 export interface BackendRequestDto {
   id?: number;
@@ -41,12 +37,10 @@ export interface BackendRequestDto {
   responseExtractorsJson: string;
 }
 
-
 export interface BackendRequestUsageScenario {
   scenarioId: number;
   scenarioName: string | null;
 }
-
 
 export interface BackendRequestUsage {
   backendRequestId: number;
@@ -54,9 +48,7 @@ export interface BackendRequestUsage {
   scenarios: BackendRequestUsageScenario[];
 }
 
-
 export type ImportedVariableKind = 'user' | 'scenario';
-
 
 export interface ScenarioVariableDefinition {
   name: string;
@@ -64,12 +56,10 @@ export interface ScenarioVariableDefinition {
   isUserVariable: boolean;
 }
 
-
 export interface ScenarioVariableMigrationValue {
   scenarioId: number;
   defaultValue: string;
 }
-
 
 export interface ScenarioVariableMigration {
   variable: ScenarioVariableDefinition;
@@ -77,12 +67,10 @@ export interface ScenarioVariableMigration {
   importedScenarioDefaultValue: string;
 }
 
-
 export interface BackendRequestMergePayload {
   backendRequest: Omit<BackendRequestDto, 'id'>;
   scenarioVariableMigrations: ScenarioVariableMigration[];
 }
-
 
 export type BackendRequestConflictAction =
   | 'cancel'
@@ -90,12 +78,10 @@ export type BackendRequestConflictAction =
   | 'rename-imported'
   | 'merge';
 
-
 export interface BackendRequestConflictResult {
   action: BackendRequestConflictAction;
   importedName?: string;
 }
-
 
 export type BackendDiffState =
   | 'same'
@@ -103,12 +89,10 @@ export type BackendDiffState =
   | 'only-left'
   | 'only-right';
 
-
 export interface JsonDiffLine {
   line: string;
   state: BackendDiffState;
 }
-
 
 export interface BackendFormDataDiffRow {
   key: string;
@@ -118,7 +102,6 @@ export interface BackendFormDataDiffRow {
   state: BackendDiffState;
 }
 
-
 export interface BackendCollectionDiffRow<T> {
   key: string;
   existing: T | null;
@@ -126,6 +109,62 @@ export interface BackendCollectionDiffRow<T> {
   state: BackendDiffState;
 }
 
+/**
+ * Состояние подсветки JSON-поля в merge-workspace.
+ *
+ * changed — поле существует в обеих версиях, но его значение отличается.
+ * В UI отображается жёлтым цветом с обеих сторон.
+ *
+ * added — поле отсутствует у существующего метода,
+ * но присутствует у импортируемого.
+ * В UI отображается зелёным только справа.
+ */
+export type BackendJsonMergeHighlightState =
+  | 'changed'
+  | 'added';
+
+/**
+ * Описание подсветки одного поля JSON.
+ *
+ * path использует JSONPath-подобный формат:
+ *
+ * $.name
+ * $.user.email
+ * $.items[0].id
+ */
+export interface BackendJsonMergeHighlight {
+  path: string;
+  state: BackendJsonMergeHighlightState;
+}
+
+/**
+ * Наборы подсветок, передаваемые в BackendRequestDtoEditor.
+ *
+ * Используются только на вкладках:
+ * - Request body;
+ * - Response body.
+ *
+ * Headers, form-data, field overrides и response extractors
+ * этой подсветкой не затрагиваются.
+ */
+export interface BackendRequestEditorDiffHighlight {
+  requestBody: BackendJsonMergeHighlight[];
+  responseBody: BackendJsonMergeHighlight[];
+}
+
+/**
+ * Сторона исходного сравнения, на которой находится editor.
+ *
+ * existing — существующий backend-метод.
+ * imported — импортируемый backend-метод.
+ *
+ * Итоговый метод специально не входит в этот union:
+ * для него diffHighlight и diffSide не передаются,
+ * поэтому он остаётся без подсветки.
+ */
+export type BackendRequestEditorDiffSide =
+  | 'existing'
+  | 'imported';
 
 export type BackendRequestVariableUsageLocationKind =
   | 'url'
@@ -136,18 +175,15 @@ export type BackendRequestVariableUsageLocationKind =
   | 'field-override'
   | 'response-extractor';
 
-
 export interface BackendRequestVariableUsageLocation {
   kind: BackendRequestVariableUsageLocationKind;
   label: string;
   value: string;
 }
 
-
 export type UseExistingVariableKind =
   | 'manual'
   | 'response-extractor';
-
 
 export interface ExistingScenarioVariableSnapshot {
   name: string;
@@ -161,7 +197,6 @@ export interface ExistingScenarioVariableSnapshot {
   >;
 }
 
-
 export interface UseExistingVariableIssue {
   id: string;
   requiredVariableName: string;
@@ -173,19 +208,16 @@ export interface UseExistingVariableIssue {
   suggestedDefaultValue: string;
 }
 
-
 export type UseExistingVariableDecisionKind =
   | 'keep-existing'
   | 'rename-existing-and-create-new'
   | 'create-new'
   | 'auto-create-extractor';
 
-
 export interface KeepExistingVariableDecision {
   issueId: string;
   kind: 'keep-existing';
 }
-
 
 export interface RenameExistingAndCreateNewVariableDecision {
   issueId: string;
@@ -194,26 +226,22 @@ export interface RenameExistingAndCreateNewVariableDecision {
   newVariableDefaultValue: string;
 }
 
-
 export interface CreateNewVariableDecision {
   issueId: string;
   kind: 'create-new';
   newVariableDefaultValue: string;
 }
 
-
 export interface AutoCreateExtractorVariableDecision {
   issueId: string;
   kind: 'auto-create-extractor';
 }
-
 
 export type UseExistingVariableDecision =
   | KeepExistingVariableDecision
   | RenameExistingAndCreateNewVariableDecision
   | CreateNewVariableDecision
   | AutoCreateExtractorVariableDecision;
-
 
 export interface UseExistingBackendRequestDraft {
   existingBackendRequestId: number;

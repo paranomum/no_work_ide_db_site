@@ -1,10 +1,10 @@
 package ru.paranomum.test_recorder.back.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,7 +51,7 @@ public class ScenarioExportService {
 	private final ScenarioCustomMethodRepository
 			scenarioCustomMethodRepository;
 	private final BackendRequestExportMapper backendRequestExportMapper;
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 
 	public ScenarioExportService(
 			ScenarioRepository scenarioRepository,
@@ -62,7 +62,7 @@ public class ScenarioExportService {
 			BackendRequestRepository backendRequestRepository,
 			ScenarioCustomMethodRepository scenarioCustomMethodRepository,
 			BackendRequestExportMapper backendRequestExportMapper,
-			ObjectMapper objectMapper
+			JsonMapper objectMapper
 	) {
 		this.scenarioRepository = scenarioRepository;
 		this.scenarioVariableRepository = scenarioVariableRepository;
@@ -622,7 +622,7 @@ public class ScenarioExportService {
 			}
 
 			return (ObjectNode) root;
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Сценарий id=%d содержит невалидный JSON payload"
 							.formatted(scenarioId),
@@ -643,7 +643,7 @@ public class ScenarioExportService {
 		try {
 			return objectMapper.writerWithDefaultPrettyPrinter()
 					.writeValueAsString(root);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Не удалось сериализовать JSON сценария",
 					exception

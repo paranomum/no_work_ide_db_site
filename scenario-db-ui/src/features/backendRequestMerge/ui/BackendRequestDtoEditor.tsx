@@ -26,10 +26,12 @@ import {
   stringifyFormData,
 } from '../model/backendRequestDiff';
 import type {
+  BackendDiffState,
   BackendFieldOverride,
   BackendFormDataItem,
   BackendRequestDto,
   BackendResponseExtractor,
+  JsonDiffLine,
 } from '../model/backendRequestMerge.types';
 
 const { TextArea } = Input;
@@ -39,11 +41,27 @@ export type BackendRequestEditorTab =
   | 'response'
   | 'headers';
 
+export type BackendRequestEditorDiffSide =
+  | 'existing'
+  | 'imported';
+
 interface BackendRequestDtoEditorProps {
   value: BackendRequestDto;
   disabled?: boolean;
   activeTab?: BackendRequestEditorTab;
   lockTabSelection?: boolean;
+
+  /*
+   * Эти props передаются только в двух read-only колонках
+   * merge-workspace: «Существующий» и «Импортируемый».
+   *
+   * Центральный «Итоговый метод» не получает их и продолжает
+   * отображать редактируемые TextArea без подсветки.
+   */
+  diffSide?: BackendRequestEditorDiffSide;
+  requestBodyDiffLines?: JsonDiffLine[];
+  responseBodyDiffLines?: JsonDiffLine[];
+
   onActiveTabChange?: (
     activeTab: BackendRequestEditorTab,
   ) => void;
@@ -89,11 +107,92 @@ function buildFormUrlencodedBody(
     .join('&');
 }
 
+/**
+ * Маппинг старых diff-state в классы merge-workspace.
+ *
+ * different:
+ * - строка существует в обоих JSON, но значения различаются;
+ * - жёлтый фон с обеих сторон.
+ *
+ * only-right:
+ * - строка существует только в import;
+ * - зелёный фон только у импортируемого метода.
+ *
+ * only-left:
+ * - строка есть только в существующем методе;
+ * - не подсвечивается по текущему правилу.
+ */
+function getMergeLineClassName(
+  state: BackendDiffState,
+  diffSide: BackendRequestEditorDiffSide,
+): string {
+  if (state === 'different') {
+    return 'backendMergeLineChanged';
+  }
+
+  if (
+    state === 'only-right' &&
+    diffSide === 'imported'
+  ) {
+    return 'backendMergeLineAdded';
+  }
+
+  return '';
+}
+
+/**
+ * Read-only JSON с отображением одной строки на DOM-элемент.
+ *
+ * В отличие от TextArea, div-строкам можно назначить CSS-класс
+ * и подсветить changed/added отдельными цветами.
+ */
+function BackendJsonDiffPreview({
+  lines,
+  diffSide,
+}: {
+  lines: JsonDiffLine[];
+  diffSide: BackendRequestEditorDiffSide;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: 286,
+        maxHeight: 520,
+        overflow: 'auto',
+        padding: 12,
+        border: '1px solid #d9d9d9',
+        borderRadius: 6,
+        background: '#fafafa',
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontSize: 12,
+        lineHeight: 1.55,
+        whiteSpace: 'pre',
+      }}
+    >
+      {lines.map((item, index) => (
+        <div
+          key={`${index}-${item.line}`}
+          className={getMergeLineClassName(
+            item.state,
+            diffSide,
+          )}
+        >
+          {String(index + 1).padStart(3, ' ')} {item.line}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function BackendRequestDtoEditor({
   value,
   disabled = false,
   activeTab,
   lockTabSelection = false,
+  diffSide,
+  requestBodyDiffLines,
+  responseBodyDiffLines,
   onActiveTabChange,
   onChange,
 }: BackendRequestDtoEditorProps) {
@@ -117,6 +216,15 @@ export function BackendRequestDtoEditor({
 
   const isFormBody = isFormBodyType(value.bodyType);
 
+  const shouldShowRequestBodyDiff =
+    Boolean(diffSide) &&
+    !isFormBody &&
+    typeof requestBodyDiffLines !== 'undefined';
+
+  const shouldShowResponseBodyDiff =
+    Boolean(diffSide) &&
+    typeof responseBodyDiffLines !== 'undefined';
+
   const update = (patch: Partial<BackendRequestDto>) => {
     onChange({
       ...value,
@@ -128,13 +236,14 @@ export function BackendRequestDtoEditor({
     index: number,
     patch: Partial<BackendFieldOverride>,
   ) => {
-    const updatedOverrides = fieldOverrides.map((override, itemIndex) =>
-      itemIndex === index
-        ? {
-            ...override,
-            ...patch,
-          }
-        : override,
+    const updatedOverrides = fieldOverrides.map(
+      (override, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...override,
+              ...patch,
+            }
+          : override,
     );
 
     update({
@@ -164,7 +273,7 @@ export function BackendRequestDtoEditor({
     });
   };
 
-    const parseJsonFieldsToOverrides = () => {
+  const parseJsonFieldsToOverrides = () => {
     if (value.bodyType !== 'JSON') {
       return;
     }
@@ -350,442 +459,454 @@ export function BackendRequestDtoEditor({
   ];
 
   return (
-  <Card size="small" title="Итоговый backend-метод">
-    <Form layout="vertical" requiredMark={false}>
-      <Form.Item label="Название">
-        <Input
-          value={value.name}
-          disabled={disabled}
-          onChange={(event) => update({ name: event.target.value })}
-        />
-      </Form.Item>
-
-      <Space
-        size={12}
-        style={{ width: '100%', display: 'flex' }}
-        align="start"
-      >
-        <Form.Item label="HTTP-метод" style={{ flex: 1 }}>
-          <Select
-            value={value.httpMethod}
+    <Card size="small" title="Итоговый backend-метод">
+      <Form layout="vertical" requiredMark={false}>
+        <Form.Item label="Название">
+          <Input
+            value={value.name}
             disabled={disabled}
-            options={[
-              'GET',
-              'POST',
-              'PUT',
-              'PATCH',
-              'DELETE',
-              'HEAD',
-              'OPTIONS',
-            ].map((item) => ({
-              value: item,
-              label: item,
-            }))}
-            onChange={(httpMethod) => update({ httpMethod })}
+            onChange={(event) => update({ name: event.target.value })}
           />
         </Form.Item>
 
-        <Form.Item label="Тип body" style={{ flex: 1 }}>
-          <Select
-            value={value.bodyType}
+        <Space
+          size={12}
+          style={{ width: '100%', display: 'flex' }}
+          align="start"
+        >
+          <Form.Item label="HTTP-метод" style={{ flex: 1 }}>
+            <Select
+              value={value.httpMethod}
+              disabled={disabled}
+              options={[
+                'GET',
+                'POST',
+                'PUT',
+                'PATCH',
+                'DELETE',
+                'HEAD',
+                'OPTIONS',
+              ].map((item) => ({
+                value: item,
+                label: item,
+              }))}
+              onChange={(httpMethod) => update({ httpMethod })}
+            />
+          </Form.Item>
+
+          <Form.Item label="Тип body" style={{ flex: 1 }}>
+            <Select
+              value={value.bodyType}
+              disabled={disabled}
+              options={[
+                'NONE',
+                'JSON',
+                'FORM_URLENCODED',
+                'FORM_DATA',
+                'RAW',
+              ].map((item) => ({
+                value: item,
+                label: item,
+              }))}
+              onChange={(bodyType) => update({ bodyType })}
+            />
+          </Form.Item>
+        </Space>
+
+        <Form.Item label="URL">
+          <Input
+            value={value.url}
             disabled={disabled}
-            options={[
-              'NONE',
-              'JSON',
-              'FORM_URLENCODED',
-              'FORM_DATA',
-              'RAW',
-            ].map((item) => ({
-              value: item,
-              label: item,
-            }))}
-            onChange={(bodyType) => update({ bodyType })}
+            onChange={(event) => update({ url: event.target.value })}
           />
         </Form.Item>
-      </Space>
 
-      <Form.Item label="URL">
-        <Input
-          value={value.url}
-          disabled={disabled}
-          onChange={(event) => update({ url: event.target.value })}
-        />
-      </Form.Item>
+        <Form.Item label="Токен">
+          <Input
+            value={value.token}
+            disabled={disabled}
+            onChange={(event) => update({ token: event.target.value })}
+          />
+        </Form.Item>
 
-      <Form.Item label="Токен">
-        <Input
-          value={value.token}
-          disabled={disabled}
-          onChange={(event) => update({ token: event.target.value })}
-        />
-      </Form.Item>
-
-      <Tabs
-        {...(activeTab
-          ? {
-              activeKey: activeTab,
+        <Tabs
+          {...(activeTab
+            ? {
+                activeKey: activeTab,
+              }
+            : {})}
+          onChange={(nextTab) => {
+            if (lockTabSelection) {
+              return;
             }
-          : {})}
-        onChange={(nextTab) => {
-          if (lockTabSelection) {
-            return;
-          }
 
-          onActiveTabChange?.(
-            nextTab as BackendRequestEditorTab,
-          );
-        }}
-        items={[
-          {
-            key: 'body',
-            label: 'Request body',
-            children: (
-              <>
-                {isFormBody ? (
-                  <div>
+            onActiveTabChange?.(
+              nextTab as BackendRequestEditorTab,
+            );
+          }}
+          items={[
+            {
+              key: 'body',
+              label: 'Request body',
+              children: (
+                <>
+                  {isFormBody ? (
+                    <div>
+                      <Space
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Typography.Text strong>
+                          Form-data поля
+                        </Typography.Text>
+
+                        <Button
+                          size="small"
+                          icon={<PlusOutlined />}
+                          disabled={disabled}
+                          onClick={addFormDataItem}
+                        >
+                          Добавить поле
+                        </Button>
+                      </Space>
+
+                      <Table<BackendFormDataItem>
+                        size="small"
+                        rowKey={(_, index) => String(index)}
+                        columns={formDataColumns}
+                        dataSource={formData}
+                        pagination={false}
+                        locale={{
+                          emptyText: 'Form-data поля не добавлены',
+                        }}
+                      />
+
+                      {value.bodyType === 'FORM_URLENCODED' && (
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ marginTop: 12 }}
+                          message="URL-encoded body"
+                          description="При редактировании таблицы автоматически обновляется requestBody в формате application/x-www-form-urlencoded."
+                        />
+                      )}
+                    </div>
+                  ) : shouldShowRequestBodyDiff && diffSide ? (
+                    <BackendJsonDiffPreview
+                      lines={requestBodyDiffLines ?? []}
+                      diffSide={diffSide}
+                    />
+                  ) : (
+                    <TextArea
+                      value={beautifyJson(value.requestBody)}
+                      disabled={disabled}
+                      autoSize={{ minRows: 12, maxRows: 26 }}
+                      style={{ fontFamily: 'monospace' }}
+                      onChange={(event) =>
+                        update({
+                          requestBody: event.target.value,
+                        })
+                      }
+                    />
+                  )}
+
+                  <div style={{ marginTop: 20 }}>
                     <Space
                       style={{
                         width: '100%',
                         display: 'flex',
                         justifyContent: 'space-between',
-                        marginBottom: 12,
                       }}
                     >
-                      <Typography.Text strong>
-                        Form-data поля
-                      </Typography.Text>
+                      <Typography.Title level={5} style={{ margin: 0 }}>
+                        Field overrides
+                      </Typography.Title>
 
-                      <Button
-                        size="small"
-                        icon={<PlusOutlined />}
-                        disabled={disabled}
-                        onClick={addFormDataItem}
-                      >
-                        Добавить поле
-                      </Button>
-                    </Space>
+                      <Space>
+                        {!disabled && value.bodyType === 'JSON' && (
+                          <Button
+                            size="small"
+                            icon={<ScanOutlined />}
+                            onClick={parseJsonFieldsToOverrides}
+                          >
+                            Разобрать поля JSON
+                          </Button>
+                        )}
 
-                    <Table<BackendFormDataItem>
-                      size="small"
-                      rowKey={(_, index) => String(index)}
-                      columns={formDataColumns}
-                      dataSource={formData}
-                      pagination={false}
-                      locale={{
-                        emptyText: 'Form-data поля не добавлены',
-                      }}
-                    />
-
-                    {value.bodyType === 'FORM_URLENCODED' && (
-                      <Alert
-                        type="info"
-                        showIcon
-                        style={{ marginTop: 12 }}
-                        message="URL-encoded body"
-                        description="При редактировании таблицы автоматически обновляется requestBody в формате application/x-www-form-urlencoded."
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <TextArea
-                    value={beautifyJson(value.requestBody)}
-                    disabled={disabled}
-                    autoSize={{ minRows: 12, maxRows: 26 }}
-                    style={{ fontFamily: 'monospace' }}
-                    onChange={(event) =>
-                      update({
-                        requestBody: event.target.value,
-                      })
-                    }
-                  />
-                )}
-
-                <div style={{ marginTop: 20 }}>
-                  <Space
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <Typography.Title level={5} style={{ margin: 0 }}>
-                      Field overrides
-                    </Typography.Title>
-
-                    <Space>
-                      {!disabled && value.bodyType === 'JSON' && (
                         <Button
                           size="small"
-                          icon={<ScanOutlined />}
-                          onClick={parseJsonFieldsToOverrides}
+                          icon={<PlusOutlined />}
+                          disabled={disabled}
+                          onClick={addOverride}
                         >
-                          Разобрать поля JSON
+                          Добавить
                         </Button>
+                      </Space>
+                    </Space>
+
+                    {value.bodyType === 'JSON' && (
+                      <Typography.Paragraph
+                        type="secondary"
+                        style={{
+                          marginTop: 8,
+                          marginBottom: 12,
+                        }}
+                      >
+                        Кнопка «Разобрать поля JSON» добавляет конечные
+                        пути из request body и не дублирует существующие
+                        overrides.
+                      </Typography.Paragraph>
+                    )}
+
+                    <Space
+                      direction="vertical"
+                      size={8}
+                      style={{ width: '100%' }}
+                    >
+                      {fieldOverrides.map((override, index) => (
+                        <Card
+                          key={`${override.fieldPath}-${index}`}
+                          size="small"
+                          styles={{ body: { padding: 10 } }}
+                        >
+                          <Space
+                            direction="vertical"
+                            size={8}
+                            style={{ width: '100%' }}
+                          >
+                            <Space
+                              style={{
+                                width: '100%',
+                                display: 'flex',
+                              }}
+                            >
+                              <Input
+                                placeholder="Field path"
+                                value={override.fieldPath}
+                                disabled={disabled}
+                                style={{ flex: 1 }}
+                                onChange={(event) =>
+                                  updateOverride(index, {
+                                    fieldPath: event.target.value,
+                                  })
+                                }
+                              />
+
+                              <Select
+                                value={override.type}
+                                disabled={disabled}
+                                style={{ width: 110 }}
+                                options={[
+                                  {
+                                    value: 'string',
+                                    label: 'string',
+                                  },
+                                  {
+                                    value: 'number',
+                                    label: 'number',
+                                  },
+                                ]}
+                                onChange={(type) =>
+                                  updateOverride(index, { type })
+                                }
+                              />
+
+                              <Button
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
+                                aria-label="Удалить override"
+                                disabled={disabled}
+                                onClick={() => removeOverride(index)}
+                              />
+                            </Space>
+
+                            <Space
+                              style={{
+                                width: '100%',
+                                display: 'flex',
+                              }}
+                            >
+                              <Select
+                                value={override.method}
+                                disabled={disabled}
+                                style={{ width: 190 }}
+                                options={[
+                                  {
+                                    value: 'value',
+                                    label: 'value',
+                                  },
+                                  {
+                                    value: 'use variable',
+                                    label: 'use variable',
+                                  },
+                                  {
+                                    value: 'addUuid',
+                                    label: 'addUuid',
+                                  },
+                                ]}
+                                onChange={(method) =>
+                                  updateOverride(index, { method })
+                                }
+                              />
+
+                              <Input
+                                placeholder="Аргумент или ${переменная}"
+                                value={override.methodArg}
+                                disabled={disabled}
+                                style={{ flex: 1 }}
+                                onChange={(event) =>
+                                  updateOverride(index, {
+                                    methodArg: event.target.value,
+                                  })
+                                }
+                              />
+                            </Space>
+                          </Space>
+                        </Card>
+                      ))}
+
+                      {fieldOverrides.length === 0 && (
+                        <Typography.Text type="secondary">
+                          Overrides не добавлены
+                        </Typography.Text>
                       )}
+                    </Space>
+                  </div>
+                </>
+              ),
+            },
+            {
+              key: 'response',
+              label: 'Response body',
+              children: (
+                <>
+                  {shouldShowResponseBodyDiff && diffSide ? (
+                    <BackendJsonDiffPreview
+                      lines={responseBodyDiffLines ?? []}
+                      diffSide={diffSide}
+                    />
+                  ) : (
+                    <TextArea
+                      value={beautifyJson(value.capturedResponseBody)}
+                      disabled={disabled}
+                      autoSize={{ minRows: 12, maxRows: 26 }}
+                      style={{ fontFamily: 'monospace' }}
+                      onChange={(event) =>
+                        update({
+                          capturedResponseBody: event.target.value,
+                        })
+                      }
+                    />
+                  )}
+
+                  <div style={{ marginTop: 20 }}>
+                    <Space
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <Typography.Title level={5} style={{ margin: 0 }}>
+                        Response extractors
+                      </Typography.Title>
 
                       <Button
                         size="small"
                         icon={<PlusOutlined />}
                         disabled={disabled}
-                        onClick={addOverride}
+                        onClick={addExtractor}
                       >
                         Добавить
                       </Button>
                     </Space>
-                  </Space>
 
-                  {value.bodyType === 'JSON' && (
-                    <Typography.Paragraph
-                      type="secondary"
+                    <Space
+                      direction="vertical"
+                      size={8}
                       style={{
-                        marginTop: 8,
-                        marginBottom: 12,
+                        width: '100%',
+                        marginTop: 12,
                       }}
                     >
-                      Кнопка «Разобрать поля JSON» добавляет конечные
-                      пути из request body и не дублирует существующие
-                      overrides.
-                    </Typography.Paragraph>
-                  )}
-
-                  <Space
-                    direction="vertical"
-                    size={8}
-                    style={{ width: '100%' }}
-                  >
-                    {fieldOverrides.map((override, index) => (
-                      <Card
-                        key={`${override.fieldPath}-${index}`}
-                        size="small"
-                        styles={{ body: { padding: 10 } }}
-                      >
+                      {responseExtractors.map((extractor, index) => (
                         <Space
-                          direction="vertical"
-                          size={8}
-                          style={{ width: '100%' }}
+                          key={`${extractor.fieldPath}-${index}`}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                          }}
                         >
-                          <Space
-                            style={{
-                              width: '100%',
-                              display: 'flex',
-                            }}
-                          >
-                            <Input
-                              placeholder="Field path"
-                              value={override.fieldPath}
-                              disabled={disabled}
-                              style={{ flex: 1 }}
-                              onChange={(event) =>
-                                updateOverride(index, {
-                                  fieldPath: event.target.value,
-                                })
-                              }
-                            />
+                          <Input
+                            placeholder="Поле ответа"
+                            value={extractor.fieldPath}
+                            disabled={disabled}
+                            style={{ flex: 1 }}
+                            onChange={(event) =>
+                              updateExtractor(index, {
+                                fieldPath: event.target.value,
+                              })
+                            }
+                          />
 
-                            <Select
-                              value={override.type}
-                              disabled={disabled}
-                              style={{ width: 110 }}
-                              options={[
-                                {
-                                  value: 'string',
-                                  label: 'string',
-                                },
-                                {
-                                  value: 'number',
-                                  label: 'number',
-                                },
-                              ]}
-                              onChange={(type) =>
-                                updateOverride(index, { type })
-                              }
-                            />
+                          <Input
+                            placeholder="Имя переменной"
+                            value={extractor.variableName}
+                            disabled={disabled}
+                            style={{ flex: 1 }}
+                            onChange={(event) =>
+                              updateExtractor(index, {
+                                variableName: event.target.value,
+                              })
+                            }
+                          />
 
-                            <Button
-                              type="text"
-                              danger
-                              icon={<DeleteOutlined />}
-                              aria-label="Удалить override"
-                              disabled={disabled}
-                              onClick={() => removeOverride(index)}
-                            />
-                          </Space>
-
-                          <Space
-                            style={{
-                              width: '100%',
-                              display: 'flex',
-                            }}
-                          >
-                            <Select
-                              value={override.method}
-                              disabled={disabled}
-                              style={{ width: 190 }}
-                              options={[
-                                {
-                                  value: 'value',
-                                  label: 'value',
-                                },
-                                {
-                                  value: 'use variable',
-                                  label: 'use variable',
-                                },
-                                {
-                                  value: 'addUuid',
-                                  label: 'addUuid',
-                                },
-                              ]}
-                              onChange={(method) =>
-                                updateOverride(index, { method })
-                              }
-                            />
-
-                            <Input
-                              placeholder="Аргумент или ${переменная}"
-                              value={override.methodArg}
-                              disabled={disabled}
-                              style={{ flex: 1 }}
-                              onChange={(event) =>
-                                updateOverride(index, {
-                                  methodArg: event.target.value,
-                                })
-                              }
-                            />
-                          </Space>
+                          <Button
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            aria-label="Удалить extractor"
+                            disabled={disabled}
+                            onClick={() => removeExtractor(index)}
+                          />
                         </Space>
-                      </Card>
-                    ))}
+                      ))}
 
-                    {fieldOverrides.length === 0 && (
-                      <Typography.Text type="secondary">
-                        Overrides не добавлены
-                      </Typography.Text>
-                    )}
-                  </Space>
-                </div>
-              </>
-            ),
-          },
-          {
-            key: 'response',
-            label: 'Response body',
-            children: (
-              <>
+                      {responseExtractors.length === 0 && (
+                        <Typography.Text type="secondary">
+                          Extractors не добавлены
+                        </Typography.Text>
+                      )}
+                    </Space>
+                  </div>
+                </>
+              ),
+            },
+            {
+              key: 'headers',
+              label: 'Headers',
+              children: (
                 <TextArea
-                  value={beautifyJson(value.capturedResponseBody)}
+                  value={beautifyJson(value.requestHeadersJson)}
                   disabled={disabled}
                   autoSize={{ minRows: 12, maxRows: 26 }}
                   style={{ fontFamily: 'monospace' }}
                   onChange={(event) =>
                     update({
-                      capturedResponseBody: event.target.value,
+                      requestHeadersJson: event.target.value,
                     })
                   }
                 />
-
-                <div style={{ marginTop: 20 }}>
-                  <Space
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <Typography.Title level={5} style={{ margin: 0 }}>
-                      Response extractors
-                    </Typography.Title>
-
-                    <Button
-                      size="small"
-                      icon={<PlusOutlined />}
-                      disabled={disabled}
-                      onClick={addExtractor}
-                    >
-                      Добавить
-                    </Button>
-                  </Space>
-
-                  <Space
-                    direction="vertical"
-                    size={8}
-                    style={{
-                      width: '100%',
-                      marginTop: 12,
-                    }}
-                  >
-                    {responseExtractors.map((extractor, index) => (
-                      <Space
-                        key={`${extractor.fieldPath}-${index}`}
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                        }}
-                      >
-                        <Input
-                          placeholder="Поле ответа"
-                          value={extractor.fieldPath}
-                          disabled={disabled}
-                          style={{ flex: 1 }}
-                          onChange={(event) =>
-                            updateExtractor(index, {
-                              fieldPath: event.target.value,
-                            })
-                          }
-                        />
-
-                        <Input
-                          placeholder="Имя переменной"
-                          value={extractor.variableName}
-                          disabled={disabled}
-                          style={{ flex: 1 }}
-                          onChange={(event) =>
-                            updateExtractor(index, {
-                              variableName: event.target.value,
-                            })
-                          }
-                        />
-
-                        <Button
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          aria-label="Удалить extractor"
-                          disabled={disabled}
-                          onClick={() => removeExtractor(index)}
-                        />
-                      </Space>
-                    ))}
-
-                    {responseExtractors.length === 0 && (
-                      <Typography.Text type="secondary">
-                        Extractors не добавлены
-                      </Typography.Text>
-                    )}
-                  </Space>
-                </div>
-              </>
-            ),
-          },
-          {
-            key: 'headers',
-            label: 'Headers',
-            children: (
-              <TextArea
-                value={beautifyJson(value.requestHeadersJson)}
-                disabled={disabled}
-                autoSize={{ minRows: 12, maxRows: 26 }}
-                style={{ fontFamily: 'monospace' }}
-                onChange={(event) =>
-                  update({
-                    requestHeadersJson: event.target.value,
-                  })
-                }
-              />
-            ),
-          },
-        ]}
-      />
-    </Form>
-  </Card>
-);
+              ),
+            },
+          ]}
+        />
+      </Form>
+    </Card>
+  );
 }

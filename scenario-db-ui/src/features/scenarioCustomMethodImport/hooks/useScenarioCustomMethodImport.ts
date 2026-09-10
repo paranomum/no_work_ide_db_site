@@ -30,12 +30,12 @@ interface UseScenarioCustomMethodImportResult {
   payload: Record<string, unknown>,
 ) => Promise<ScenarioCustomMethodResolution[]>;
   refresh: (
-    payload: Record<string, unknown>,
-  ) => Promise<void>;
+  payload: Record<string, unknown>,
+) => Promise<ScenarioCustomMethodResolution[]>;
   selectScenario: (
-    importedCustomMethodName: string,
-    scenarioId: number,
-  ) => void;
+  importedCustomMethodName: string,
+  scenarioId: number,
+) => ScenarioCustomMethodResolution[] | null;
   closeMissingModal: () => void;
   openScenarioCreateInNewTab: () => void;
   reset: () => void;
@@ -122,23 +122,64 @@ export function useScenarioCustomMethodImport(): UseScenarioCustomMethodImportRe
 };
 
   const refresh = async (
-    payload: Record<string, unknown>,
-  ): Promise<void> => {
-    try {
-      setIsLoading(true);
+  payload: Record<string, unknown>,
+): Promise<ScenarioCustomMethodResolution[]> => {
+  try {
+    setIsLoading(true);
 
-      const { data: scenarios } = await http.get<
-        ScenarioResponse[]
-      >('/scenarios');
+    const { data: scenarios } = await http.get<
+      ScenarioResponse[]
+    >('/scenarios');
 
-      setAvailableScenarios(scenarios);
+    const nextResolutions = buildResolutions(
+      payload,
+      scenarios,
+      resolutions,
+    );
 
-setResolutions((currentResolutions) => {
-  const nextResolutions = buildResolutions(
-    payload,
-    scenarios,
-    currentResolutions,
+    setAvailableScenarios(scenarios);
+    setResolutions(nextResolutions);
+
+    setIsMissingModalOpen(
+      nextResolutions.some(
+        (resolution) => resolution.kind === 'unresolved',
+      ),
+    );
+
+    return nextResolutions;
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  const selectScenario = (
+  importedCustomMethodName: string,
+  scenarioId: number,
+): ScenarioCustomMethodResolution[] | null => {
+  const selectedScenario = availableScenarios.find(
+    (scenario) => scenario.id === scenarioId,
   );
+
+  if (!selectedScenario) {
+    return null;
+  }
+
+  const nextResolutions = resolutions.map((resolution) => {
+    if (
+      resolution.importedCustomMethod.name !==
+      importedCustomMethodName
+    ) {
+      return resolution;
+    }
+
+    return {
+      ...resolution,
+      targetScenario: selectedScenario,
+      kind: 'selected-existing' as const,
+    };
+  });
+
+  setResolutions(nextResolutions);
 
   setIsMissingModalOpen(
     nextResolutions.some(
@@ -147,53 +188,7 @@ setResolutions((currentResolutions) => {
   );
 
   return nextResolutions;
-});
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const selectScenario = (
-    importedCustomMethodName: string,
-    scenarioId: number,
-  ) => {
-    const selectedScenario = availableScenarios.find(
-      (scenario) => scenario.id === scenarioId,
-    );
-
-    if (!selectedScenario) {
-      return;
-    }
-
-    setResolutions((currentResolutions) => {
-      const nextResolutions = currentResolutions.map(
-        (resolution) => {
-          if (
-            resolution.importedCustomMethod.name !==
-            importedCustomMethodName
-          ) {
-            return resolution;
-          }
-
-          return {
-            ...resolution,
-            targetScenario: selectedScenario,
-            kind: 'selected-existing' as const,
-          };
-        },
-      );
-
-      const hasUnresolved = nextResolutions.some(
-        (resolution) => resolution.kind === 'unresolved',
-      );
-
-      if (!hasUnresolved) {
-        setIsMissingModalOpen(false);
-      }
-
-      return nextResolutions;
-    });
-  };
+};
 
   const closeMissingModal = () => {
     setIsMissingModalOpen(false);

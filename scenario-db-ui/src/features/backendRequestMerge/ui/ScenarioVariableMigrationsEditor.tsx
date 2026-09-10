@@ -59,7 +59,15 @@ function getVariableTypeColor(isUserVariable: boolean): string {
 }
 
 function createMigrationKey(): string {
-  return crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return [
+    'migration',
+    Date.now().toString(36),
+    Math.random().toString(36).slice(2),
+  ].join('-');
 }
 
 export function ScenarioVariableMigrationsEditor({
@@ -124,29 +132,32 @@ export function ScenarioVariableMigrationsEditor({
     [rows, typeEditingMigrationIndex],
   );
 
-  const addMigration = () => {
-    migrationKeysRef.current.push(createMigrationKey());
-
-    onChange([
-      ...value,
-      {
-        variable: {
-          name: '',
-          /*
-           * Поле требуется текущим типом, но в этой таблице
-           * описание намеренно не показываем.
-           */
-          description: '',
-          isUserVariable: false,
-        },
-        scenarioValues: scenarios.map((scenario) => ({
-          scenarioId: scenario.scenarioId,
-          defaultValue: '',
-        })),
-        importedScenarioDefaultValue: '',
+const addMigration = () => {
+  const nextValue = [
+    ...value,
+    {
+      variable: {
+        name: '',
+        description: '',
+        isUserVariable: false,
       },
-    ]);
-  };
+      scenarioValues: scenarios.map((scenario) => ({
+        scenarioId: scenario.scenarioId,
+        defaultValue: '',
+      })),
+      importedScenarioDefaultValue: '',
+    },
+  ];
+
+  console.log('ADD MIGRATION', {
+    previous: value,
+    next: nextValue,
+  });
+
+  migrationKeysRef.current.push(createMigrationKey());
+
+  onChange(nextValue);
+};
 
   const updateMigration = (
     migrationIndex: number,

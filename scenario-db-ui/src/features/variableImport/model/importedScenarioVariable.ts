@@ -1,6 +1,9 @@
 import type {
   BackendRequestDto,
 } from '../../backendRequestMerge/model/backendRequestMerge.types';
+import {
+  CUSTOM_METHOD_VARIABLE_NAMES_KEY,
+} from '../../scenarioCustomMethodImport/model/customMethodVariablePropagation';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -8,7 +11,8 @@ export type ImportedVariableSource =
   | 'variables'
   | 'backendRequest'
   | 'fieldOverride'
-  | 'responseExtractor';
+  | 'responseExtractor'
+  | 'customMethod';
 
 export interface ImportedScenarioVariable {
   name: string;
@@ -23,13 +27,14 @@ interface ImportedVariableRaw extends JsonRecord {
   value?: unknown;
 }
 
+interface FieldOverrideRaw extends JsonRecord {
+  method?: unknown;
+  methodArg?: unknown;
+}
+
 interface FormDataItemRaw extends JsonRecord {
   key?: unknown;
   value?: unknown;
-}
-
-interface FieldOverrideRaw extends JsonRecord {
-  methodArg?: unknown;
 }
 
 interface ResponseExtractorRaw extends JsonRecord {
@@ -65,6 +70,10 @@ function normalizeVariableName(value: string): string {
   return value.trim();
 }
 
+function getVariableKey(value: string): string {
+  return normalizeVariableName(value).toLocaleLowerCase('ru-RU');
+}
+
 function getVariableNamesFromText(value: unknown): string[] {
   if (typeof value !== 'string') {
     return [];
@@ -84,6 +93,84 @@ function getVariableNamesFromText(value: unknown): string[] {
   return names;
 }
 
+function unwrapVariableExpression(
+  value: string,
+): string | null {
+  const match = /^\$\{([^}]+)\}$/.exec(value.trim());
+
+  if (!match) {
+    return null;
+  }
+
+  const variableName = normalizeVariableName(
+    match[1] ?? '',
+  );
+
+  return variableName || null;
+}
+
+function getUseVariableName(
+  methodArg: unknown,
+): string | null {
+  if (typeof methodArg !== 'string') {
+    return null;
+  }
+
+  const trimmedMethodArg = methodArg.trim();
+
+  if (!trimmedMethodArg) {
+    return null;
+  }
+
+  return (
+    unwrapVariableExpression(trimmedMethodArg) ??
+    trimmedMethodArg
+  );
+}
+
+function getCustomMethodVariableNames(
+  payload: JsonRecord,
+): string[] {
+  const value = payload[CUSTOM_METHOD_VARIABLE_NAMES_KEY];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is string =>
+      typeof item === 'string' && item.trim().length > 0,
+  );
+}
+
+function addFieldOverrideVariable(
+  variableMap: Map<string, ParsedVariable>,
+  variableName: string,
+  nextPosition: () => number,
+): void {
+  const normalizedName = normalizeVariableName(variableName);
+  const variableKey = getVariableKey(normalizedName);
+
+  if (!normalizedName || !variableKey) {
+    return;
+  }
+
+  const existing = variableMap.get(variableKey);
+
+  if (existing) {
+    existing.sources.add('fieldOverride');
+    return;
+  }
+
+  variableMap.set(variableKey, {
+    name: normalizedName,
+    defaultValue: '',
+    position: nextPosition(),
+    sources: new Set(['fieldOverride']),
+    isProducedByExtractor: false,
+  });
+}
+
 function parseJsonArray(json: string): unknown[] {
   try {
     return asArray(JSON.parse(json));
@@ -98,16 +185,23 @@ function addTextVariables(
   source: ImportedVariableSource,
   nextPosition: () => number,
 ): void {
-  getVariableNamesFromText(value).forEach((name) => {
-    const existing = variableMap.get(name);
+  getVariableNamesFromText(value).forEach((variableName) => {
+    const normalizedName = normalizeVariableName(variableName);
+    const variableKey = getVariableKey(normalizedName);
+
+    if (!normalizedName || !variableKey) {
+      return;
+    }
+
+    const existing = variableMap.get(variableKey);
 
     if (existing) {
       existing.sources.add(source);
       return;
     }
 
-    variableMap.set(name, {
-      name,
+    variableMap.set(variableKey, {
+      name: normalizedName,
       defaultValue: '',
       position: nextPosition(),
       sources: new Set([source]),
@@ -123,27 +217,22 @@ function addExtractorVariable(
   nextPosition: () => number,
 ): void {
   const normalizedName = normalizeVariableName(variableName);
+  const variableKey = getVariableKey(normalizedName);
   const normalizedFieldPath = fieldPath.trim();
 
-  if (!normalizedName || !normalizedFieldPath) {
+  if (!normalizedName || !variableKey || !normalizedFieldPath) {
     return;
   }
 
-  const existing = variableMap.get(normalizedName);
+  const existing = variableMap.get(variableKey);
 
   if (existing) {
-    /*
-     * Переменная уже определена в payload.variables или найдена
-     * в другом месте сценария. Не меняем её значение здесь:
-     * это защищает импортированное значение от затирания
-     * при выборе существующего backend-метода.
-     */
     existing.sources.add('responseExtractor');
     existing.isProducedByExtractor = true;
     return;
   }
 
-  variableMap.set(normalizedName, {
+  variableMap.set(variableKey, {
     name: normalizedName,
     defaultValue: `json(${normalizedFieldPath})`,
     position: nextPosition(),
@@ -152,19 +241,45 @@ function addExtractorVariable(
   });
 }
 
+function addCustomMethodVariable(
+  variableMap: Map<string, ParsedVariable>,
+  variableName: string,
+  nextPosition: () => number,
+): void {
+  const normalizedName = normalizeVariableName(variableName);
+  const variableKey = getVariableKey(normalizedName);
+
+  if (!normalizedName || !variableKey) {
+    return;
+  }
+
+  const existing = variableMap.get(variableKey);
+
+  if (existing) {
+    existing.sources.add('customMethod');
+    return;
+  }
+
+  variableMap.set(variableKey, {
+    name: normalizedName,
+    defaultValue: '',
+    position: nextPosition(),
+    sources: new Set(['customMethod']),
+    isProducedByExtractor: false,
+  });
+}
+
 function collectVariablesFromBackendRequest(
   variables: Map<string, ParsedVariable>,
   request: BackendRequestDto,
   nextPosition: () => number,
 ): void {
-
   addTextVariables(
-  variables,
-  request.url,
-  'backendRequest',
-  nextPosition,
-);
-
+    variables,
+    request.url,
+    'backendRequest',
+    nextPosition,
+  );
 
   addTextVariables(
     variables,
@@ -194,15 +309,34 @@ function collectVariablesFromBackendRequest(
 
       addTextVariables(
         variables,
-        formDataItem.key,
+        formDataItem.value,
         'backendRequest',
         nextPosition,
       );
+    });
 
-      addTextVariables(
+  parseJsonArray(request.fieldOverridesJson)
+    .filter(isRecord)
+    .forEach((item) => {
+      const override = item as FieldOverrideRaw;
+
+      const method = asString(override.method).trim();
+
+      if (method !== 'use variable') {
+        return;
+      }
+
+      const variableName = getUseVariableName(
+        override.methodArg,
+      );
+
+      if (!variableName) {
+        return;
+      }
+
+      addFieldOverrideVariable(
         variables,
-        formDataItem.value,
-        'backendRequest',
+        variableName,
         nextPosition,
       );
     });
@@ -221,17 +355,17 @@ function collectVariablesFromBackendRequest(
     });
 
   parseJsonArray(request.responseExtractorsJson)
-  .filter(isRecord)
-  .forEach((item) => {
-    const extractor = item as ResponseExtractorRaw;
+    .filter(isRecord)
+    .forEach((item) => {
+      const extractor = item as ResponseExtractorRaw;
 
-    addExtractorVariable(
-      variables,
-      asString(extractor.variableName),
-      asString(extractor.fieldPath),
-      nextPosition,
-    );
-  });
+      addExtractorVariable(
+        variables,
+        asString(extractor.variableName),
+        asString(extractor.fieldPath),
+        nextPosition,
+      );
+    });
 }
 
 export function parseImportedScenarioVariables(
@@ -252,20 +386,23 @@ export function parseImportedScenarioVariables(
     .filter(isRecord)
     .forEach((item) => {
       const rawVariable = item as ImportedVariableRaw;
-      const name = normalizeVariableName(asString(rawVariable.name));
+      const name = normalizeVariableName(
+        asString(rawVariable.name),
+      );
+      const variableKey = getVariableKey(name);
 
-      if (!name) {
+      if (!name || !variableKey) {
         return;
       }
 
-      const existing = variables.get(name);
+      const existing = variables.get(variableKey);
 
       if (existing) {
         existing.sources.add('variables');
         return;
       }
 
-      variables.set(name, {
+      variables.set(variableKey, {
         name,
         defaultValue: asString(rawVariable.value),
         position: nextPosition(),
@@ -273,6 +410,16 @@ export function parseImportedScenarioVariables(
         isProducedByExtractor: false,
       });
     });
+
+  getCustomMethodVariableNames(payload).forEach(
+    (variableName) => {
+      addCustomMethodVariable(
+        variables,
+        variableName,
+        nextPosition,
+      );
+    },
+  );
 
   resolvedBackendRequests.forEach((request) => {
     collectVariablesFromBackendRequest(

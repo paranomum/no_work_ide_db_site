@@ -787,22 +787,23 @@ export function ScenarioPage() {
                       />
                     ) : (
                       <Virtuoso
-                        className={styles.relatedList}
-                        data={relatedScenarios}
-                        computeItemKey={(_, item) => item.id}
-                        itemContent={(_, relatedScenario) => (
-                          <ScenarioItem
-  scenario={relatedScenario}
-  hideActions
-  onOpen={openRelatedScenario}
-  onEdit={openRelatedScenario}
-  onDownloadOriginal={() => undefined}
-  onDownloadFull={() => undefined}
-  onDownloadZip={() => undefined}
-  onDelete={async () => undefined}
-/>
-                        )}
-                      />
+                      className={styles.relatedList}
+                      style={{ height: 320 }}
+                      data={relatedScenarios}
+                      computeItemKey={(_, item) => item.id}
+                      itemContent={(_, relatedScenario) => (
+                        <ScenarioItem
+                          scenario={relatedScenario}
+                          hideActions
+                          onOpen={openRelatedScenario}
+                          onEdit={openRelatedScenario}
+                          onDownloadOriginal={() => undefined}
+                          onDownloadFull={() => undefined}
+                          onDownloadZip={() => undefined}
+                          onDelete={async () => undefined}
+                        />
+                      )}
+                    />
                     )}
                   </Card>
 

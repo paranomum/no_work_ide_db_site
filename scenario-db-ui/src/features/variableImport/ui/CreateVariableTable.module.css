@@ -1,0 +1,23 @@
+.invalidRow > td {
+  background: #fff2f0 !important;
+}
+
+.requiresResolutionRow > td {
+  background: #fffbe6 !important;
+}
+
+.unusedRow > td {
+  background: #fafafa !important;
+}
+
+.unusedRow > td:first-child {
+  border-left: 3px solid #bfbfbf;
+}
+
+.requiresResolutionRow > td:first-child {
+  border-left: 3px solid #faad14;
+}
+
+.invalidRow > td:first-child {
+  border-left: 3px solid #ff4d4f;
+}

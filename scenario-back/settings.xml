@@ -1,0 +1,54 @@
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+<mirrors>
+    <mirror>
+      <id>maven-repo1.maven.org</id>
+      <name>maven-repo1.maven.org</name>
+      <url>https://repository.rt.ru/repository/maven-repo1.maven.org</url>
+      <mirrorOf>*</mirrorOf>
+    </mirror>
+  <mirror>
+    <id>maven-repo.maven.apache.org</id>
+    <name>maven-repo.maven.apache.org</name>
+    <url>https://repository.rt.ru/repository/maven-repo.maven.apache.org</url>
+    <mirrorOf>*</mirrorOf>
+  </mirror>
+  </mirrors>
+  <profiles>
+    <profile>
+      <id>phoenix</id>
+      <repositories>
+        <repository>
+          <id>maven-repo1.maven.org-repo</id>
+          <url>https://repository.rt.ru/repository/maven-repo1.maven.org</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+        <repository>
+          <id>maven-repo.maven.apache.org-repo</id>
+          <url>https://repository.rt.ru/repository/maven-repo.maven.apache.org</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>maven-repo1.maven.org-plugin</id>
+          <url>https://repository.rt.ru/repository/maven-repo1.maven.org</url>
+          <releases><enabled>false</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+        <pluginRepository>
+          <id>maven-repo.maven.apache.org-repo-plugin</id>
+          <url>https://repository.rt.ru/repository/maven-repo.maven.apache.org</url>
+          <releases><enabled>false</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>phoenix</activeProfile>
+  </activeProfiles>
+
+</settings>

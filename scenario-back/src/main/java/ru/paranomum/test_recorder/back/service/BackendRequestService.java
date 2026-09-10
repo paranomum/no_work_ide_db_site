@@ -1,9 +1,10 @@
 package ru.paranomum.test_recorder.back.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -52,7 +53,7 @@ public class BackendRequestService {
 	private final ScenarioRepository scenarioRepository;
 	private final VariableRepository variableRepository;
 	private final ScenarioVariableRepository scenarioVariableRepository;
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 
 	public BackendRequestService(
 			BackendRequestRepository backendRequestRepository,
@@ -60,7 +61,7 @@ public class BackendRequestService {
 			ScenarioRepository scenarioRepository,
 			VariableRepository variableRepository,
 			ScenarioVariableRepository scenarioVariableRepository,
-			ObjectMapper objectMapper
+			JsonMapper objectMapper
 	) {
 		this.backendRequestRepository = backendRequestRepository;
 		this.scenarioBackendRequestRepository =
@@ -214,10 +215,20 @@ public class BackendRequestService {
 			);
 		}
 
+		boolean hasVariableMigrations =
+				request.scenarioVariableMigrations() != null
+						&& !request.scenarioVariableMigrations().isEmpty();
+
 		validateAndApplyVariableMigrations(
 				request.scenarioVariableMigrations(),
 				linkedScenarioIds
 		);
+
+		if (hasVariableMigrations) {
+			scenarioVariableRepository.flush();
+
+			synchronizeLinkedScenarioPayloadVariables(linkedScenarioIds);
+		}
 
 		updateBackendRequest(backendRequest, data);
 
@@ -238,6 +249,80 @@ public class BackendRequestService {
 				.filter(Objects::nonNull)
 				.map(this::toResponse)
 				.toList();
+	}
+
+	private void synchronizeLinkedScenarioPayloadVariables(
+			Set<Long> scenarioIds
+	) {
+		if (scenarioIds.isEmpty()) {
+			return;
+		}
+
+		List<Scenario> scenarios = scenarioRepository.findAllById(scenarioIds);
+
+		for (Scenario scenario : scenarios) {
+			synchronizeScenarioPayloadVariables(scenario);
+		}
+	}
+
+	private void synchronizeScenarioPayloadVariables(Scenario scenario) {
+		ObjectNode root = parseScenarioPayload(
+				scenario.getScenarioPayloadJson()
+		);
+
+		ArrayNode payloadVariables = objectMapper.createArrayNode();
+
+		List<ScenarioVariable> scenarioVariables =
+				scenarioVariableRepository
+						.findAllByScenarioIdOrderByPositionAsc(
+								scenario.getId()
+						);
+
+		Set<Long> variableIds = scenarioVariables.stream()
+				.map(ScenarioVariable::getVariableId)
+				.collect(Collectors.toSet());
+
+		Map<Long, Variable> variablesById = variableRepository
+				.findAllById(variableIds)
+				.stream()
+				.collect(Collectors.toMap(
+						Variable::getId,
+						variable -> variable
+				));
+
+		for (ScenarioVariable scenarioVariable : scenarioVariables) {
+			Variable variable = variablesById.get(
+					scenarioVariable.getVariableId()
+			);
+
+			if (variable == null) {
+				throw new IllegalStateException(
+						"Не найдена переменная id=%d для сценария id=%d"
+								.formatted(
+										scenarioVariable.getVariableId(),
+										scenario.getId()
+								)
+				);
+			}
+
+			ObjectNode payloadVariable = objectMapper.createObjectNode();
+
+			payloadVariable.put("name", variable.getName());
+			payloadVariable.put(
+					"value",
+					scenarioVariable.getDefaultValue()
+			);
+
+			payloadVariables.add(payloadVariable);
+		}
+
+		root.set("variables", payloadVariables);
+
+		scenario.update(
+				scenario.getName(),
+				scenario.getDescription(),
+				serializeScenarioPayload(root)
+		);
 	}
 
 	private void renameBackendMethodInLinkedScenarioPayloads(
@@ -356,7 +441,7 @@ public class BackendRequestService {
 			}
 
 			return (ObjectNode) root;
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Сценарий содержит невалидный JSON payload",
 					exception
@@ -367,7 +452,7 @@ public class BackendRequestService {
 	private String serializeScenarioPayload(ObjectNode root) {
 		try {
 			return objectMapper.writeValueAsString(root);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Не удалось сериализовать JSON payload сценария",
 					exception
@@ -674,7 +759,7 @@ public class BackendRequestService {
 	private JsonNode readJson(String json, String fieldName) {
 		try {
 			return objectMapper.readTree(json);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new BackendRequestJsonInvalidException(fieldName);
 		}
 	}

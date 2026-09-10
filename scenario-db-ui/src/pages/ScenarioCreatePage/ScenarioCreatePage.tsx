@@ -30,13 +30,15 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
-
 import {
   useBackendRequestImport,
 } from '../../features/backendRequestMerge/hooks/useBackendRequestImport';
 import {
   parseImportedBackendRequests,
 } from '../../features/backendRequestMerge/model/importedBackendRequest';
+import type {
+  BackendRequestMergeDraft,
+} from '../../features/backendRequestMerge/model/backendRequestImport.types';
 import type {
   BackendRequestDto,
   UseExistingBackendRequestDraft,
@@ -51,6 +53,12 @@ import {
   UseExistingBackendRequestWorkspace,
 } from '../../features/backendRequestMerge/ui/UseExistingBackendRequestWorkspace';
 import {
+  addMissingCustomMethodVariables,
+} from '../../features/scenarioCustomMethodImport/model/customMethodVariablePropagation';
+import {
+  useRelatedScenarioVariableUsages,
+} from '../../features/scenarioCustomMethodImport/hooks/useRelatedScenarioVariableUsages';
+import {
   useScenarioCustomMethodImport,
 } from '../../features/scenarioCustomMethodImport/hooks/useScenarioCustomMethodImport';
 import {
@@ -60,26 +68,23 @@ import {
   ScenarioCustomMethodTable,
 } from '../../features/scenarioCustomMethodImport/ui/ScenarioCustomMethodTable';
 import {
-  useRelatedScenarioVariableUsages,
-} from '../../features/scenarioCustomMethodImport/hooks/useRelatedScenarioVariableUsages';
-import {
   persistScenarioImport,
 } from '../../features/scenarioImport/model/persistScenarioImport';
 import {
   ScenarioJsonEditor,
 } from '../../features/scenarioImport/ui/ScenarioJsonEditor';
 import {
-  useVariableImport,
-} from '../../features/variableImport/hooks/useVariableImport';
-import {
-  CreateVariableTable,
-} from '../../features/variableImport/ui/CreateVariableTable';
-import {
   applyMigrationsToPayload,
 } from '../../features/variableImport/model/variablePayloadMutations';
 import {
   replaceVariableNamesInPayload,
 } from '../../features/variableImport/model/variableNameReplacement';
+import {
+  useVariableImport,
+} from '../../features/variableImport/hooks/useVariableImport';
+import {
+  CreateVariableTable,
+} from '../../features/variableImport/ui/CreateVariableTable';
 import { http } from '../../shared/api/http';
 import type {
   TagResponse,
@@ -87,13 +92,15 @@ import type {
 import type {
   VariableDto,
 } from '../../shared/types/variable';
-import { AppTextArea } from '../../shared/ui/AppInput/AppTextArea';
-import { AppSelectMultiple } from '../../shared/ui/AppSelectMultiple/AppSelectMultiple';
+import {
+  AppTextArea,
+} from '../../shared/ui/AppInput/AppTextArea';
+import {
+  AppSelectMultiple,
+} from '../../shared/ui/AppSelectMultiple/AppSelectMultiple';
 import styles from './ScenarioCreatePage.module.css';
 
-
 const { Title, Text } = Typography;
-
 
 const createScenarioSchema = z.object({
   name: z
@@ -107,11 +114,9 @@ const createScenarioSchema = z.object({
   tagIds: z.array(z.string()),
 });
 
-
 type CreateScenarioFormValues = z.infer<
   typeof createScenarioSchema
 >;
-
 
 function getApiErrorMessage(
   error: unknown,
@@ -131,11 +136,9 @@ function getApiErrorMessage(
   return defaultMessage;
 }
 
-
 function getScenarioNameFromFileName(fileName: string): string {
   return fileName.replace(/\.json$/i, '').trim();
 }
-
 
 function isJsonObject(
   value: unknown,
@@ -146,7 +149,6 @@ function isJsonObject(
     !Array.isArray(value)
   );
 }
-
 
 function getUseExistingRenameReplacements(
   draft: UseExistingBackendRequestDraft,
@@ -182,7 +184,6 @@ function getUseExistingRenameReplacements(
   });
 }
 
-
 function getAllScenarioVariableMigrations(
   resolutions: ReturnType<
     typeof useBackendRequestImport
@@ -199,7 +200,6 @@ function getAllScenarioVariableMigrations(
     ),
   ]);
 }
-
 
 export function ScenarioCreatePage() {
   const navigate = useNavigate();
@@ -245,7 +245,6 @@ export function ScenarioCreatePage() {
     useState(false);
 
   const [isParsingFile, setIsParsingFile] = useState(false);
-
   const [isCreating, setIsCreating] = useState(false);
 
   const {
@@ -261,7 +260,6 @@ export function ScenarioCreatePage() {
       tagIds: [],
     },
   });
-
 
   useEffect(() => {
     let isMounted = true;
@@ -300,7 +298,6 @@ export function ScenarioCreatePage() {
     };
   }, []);
 
-
   const resetImportedFileState = () => {
     setSelectedFile(null);
     setParsedPayload(null);
@@ -310,7 +307,6 @@ export function ScenarioCreatePage() {
     setPlatformVariables([]);
     customMethodImport.reset();
   };
-
 
   const selectFile = async (file: File) => {
     const isJsonFile =
@@ -358,20 +354,26 @@ export function ScenarioCreatePage() {
         backendRequestsFromApi,
       );
 
-      const initialVariableResolutions =
-        variableImport.rebuildResolutions(
-          nextParsedPayload,
-          nextBackendImportState.resolutions,
-          variablesFromApi,
-        );
-
       const initialCustomMethodResolutions =
         await customMethodImport.initializeFromApi(
           nextParsedPayload,
         );
 
+      const payloadWithCustomMethodVariables =
+        addMissingCustomMethodVariables(
+          nextParsedPayload,
+          initialCustomMethodResolutions,
+        );
+
+      const initialVariableResolutions =
+        variableImport.rebuildResolutions(
+          payloadWithCustomMethodVariables,
+          nextBackendImportState.resolutions,
+          variablesFromApi,
+        );
+
       setSelectedFile(file);
-      setParsedPayload(nextParsedPayload);
+      setParsedPayload(payloadWithCustomMethodVariables);
       setExistingBackendRequests(backendRequestsFromApi);
       setPlatformVariables(variablesFromApi);
       variableImport.setResolutions(initialVariableResolutions);
@@ -415,12 +417,10 @@ export function ScenarioCreatePage() {
     return false;
   };
 
-
   const cancelImport = () => {
     resetImportedFileState();
     message.info('Импорт сценария отменён');
   };
-
 
   const unresolvedVariables =
     variableImport.unresolvedResolutions;
@@ -435,7 +435,8 @@ export function ScenarioCreatePage() {
 
   const selectedCustomMethodsCount =
     customMethodImport.resolutions.filter(
-      (resolution) => resolution.kind === 'selected-existing',
+      (resolution) =>
+        resolution.kind === 'selected-existing',
     ).length;
 
   const existingVariablesCount = useMemo(
@@ -487,7 +488,6 @@ export function ScenarioCreatePage() {
     !customMethodImport.isLoading &&
     customMethodImport.isResolved;
 
-
   const applyJsonPayload = async (
     nextPayload: Record<string, unknown>,
   ) => {
@@ -499,18 +499,26 @@ export function ScenarioCreatePage() {
       existingBackendRequests,
     );
 
-    const nextVariableResolutions =
-      variableImport.rebuildResolutions(
-        nextPayload,
-        nextBackendImportState.resolutions,
-        platformVariables,
-        variableImport.resolutions,
-      );
-
-    setParsedPayload(nextPayload);
-
     try {
-      await customMethodImport.refresh(nextPayload);
+      const nextCustomMethodResolutions =
+        await customMethodImport.refresh(nextPayload);
+
+      const payloadWithCustomMethodVariables =
+        addMissingCustomMethodVariables(
+          nextPayload,
+          nextCustomMethodResolutions,
+        );
+
+      setParsedPayload(payloadWithCustomMethodVariables);
+
+      variableImport.setResolutions((currentResolutions) =>
+        variableImport.rebuildResolutions(
+          payloadWithCustomMethodVariables,
+          nextBackendImportState.resolutions,
+          platformVariables,
+          currentResolutions,
+        ),
+      );
     } catch (error) {
       message.error(
         getApiErrorMessage(
@@ -521,13 +529,10 @@ export function ScenarioCreatePage() {
       return;
     }
 
-    variableImport.setResolutions(nextVariableResolutions);
-
     message.success(
       'JSON применён. Зависимости сценария пересчитаны.',
     );
   };
-
 
   const handleUseExistingWorkspaceSaved = (
     draft: UseExistingBackendRequestDraft,
@@ -564,11 +569,17 @@ export function ScenarioCreatePage() {
         allMigrations,
       );
 
-      setParsedPayload(nextPayload);
+      const payloadWithCustomMethodVariables =
+        addMissingCustomMethodVariables(
+          nextPayload,
+          customMethodImport.resolutions,
+        );
+
+      setParsedPayload(payloadWithCustomMethodVariables);
 
       variableImport.setResolutions((currentResolutions) =>
         variableImport.rebuildResolutions(
-          nextPayload,
+          payloadWithCustomMethodVariables,
           nextState.resolutions,
           platformVariables,
           currentResolutions,
@@ -588,6 +599,45 @@ export function ScenarioCreatePage() {
     }
   };
 
+  const handleMergeWorkspaceSaved = (
+    mergeDraft: BackendRequestMergeDraft,
+  ) => {
+    if (!parsedPayload) {
+      return;
+    }
+
+    const nextState = backendImport.saveMerged(mergeDraft);
+
+    if (!nextState) {
+      return;
+    }
+
+    const allMigrations = getAllScenarioVariableMigrations(
+      nextState.resolutions,
+    );
+
+    const nextPayload = applyMigrationsToPayload(
+      parsedPayload,
+      allMigrations,
+    );
+
+    const payloadWithCustomMethodVariables =
+      addMissingCustomMethodVariables(
+        nextPayload,
+        customMethodImport.resolutions,
+      );
+
+    setParsedPayload(payloadWithCustomMethodVariables);
+
+    variableImport.setResolutions((currentResolutions) =>
+      variableImport.rebuildResolutions(
+        payloadWithCustomMethodVariables,
+        nextState.resolutions,
+        platformVariables,
+        currentResolutions,
+      ),
+    );
+  };
 
   const createScenario = async (
     values: CreateScenarioFormValues,
@@ -652,7 +702,6 @@ export function ScenarioCreatePage() {
       setIsCreating(false);
     }
   };
-
 
   return (
     <main className={styles.page}>
@@ -780,9 +829,42 @@ export function ScenarioCreatePage() {
                           disabled={
                             isCreating || isParsingFile
                           }
-                          onSelectScenario={
-                            customMethodImport.selectScenario
-                          }
+                          onSelectScenario={(
+                            importedCustomMethodName,
+                            scenarioId,
+                          ) => {
+                            if (!parsedPayload) {
+                              return;
+                            }
+
+                            const nextCustomMethodResolutions =
+                              customMethodImport.selectScenario(
+                                importedCustomMethodName,
+                                scenarioId,
+                              );
+
+                            if (!nextCustomMethodResolutions) {
+                              return;
+                            }
+
+                            const nextPayload =
+                              addMissingCustomMethodVariables(
+                                parsedPayload,
+                                nextCustomMethodResolutions,
+                              );
+
+                            setParsedPayload(nextPayload);
+
+                            variableImport.setResolutions(
+                              (currentResolutions) =>
+                                variableImport.rebuildResolutions(
+                                  nextPayload,
+                                  backendImport.state.resolutions,
+                                  platformVariables,
+                                  currentResolutions,
+                                ),
+                            );
+                          }}
                         />
                       )}
 
@@ -839,6 +921,9 @@ export function ScenarioCreatePage() {
                         }
                         onDeleteVariable={
                           variableImport.deleteVariable
+                        }
+                        onRenameVariable={
+                          variableImport.renameVariable
                         }
                         getRelatedScenarioUsages={
                           relatedScenarioVariableUsages.getUsages
@@ -1023,37 +1108,7 @@ export function ScenarioCreatePage() {
           existingRequest={existingConflictRequest}
           importedRequest={activeConflict}
           onCancel={backendImport.closeMergeWorkspace}
-          onSaved={(mergeDraft) => {
-            const nextState = backendImport.saveMerged(
-              mergeDraft,
-            );
-
-            if (!nextState || !parsedPayload) {
-              return;
-            }
-
-            const allMigrations =
-              getAllScenarioVariableMigrations(
-                nextState.resolutions,
-              );
-
-            const nextPayload = applyMigrationsToPayload(
-              parsedPayload,
-              allMigrations,
-            );
-
-            setParsedPayload(nextPayload);
-
-            variableImport.setResolutions(
-              (currentResolutions) =>
-                variableImport.rebuildResolutions(
-                  nextPayload,
-                  nextState.resolutions,
-                  platformVariables,
-                  currentResolutions,
-                ),
-            );
-          }}
+          onSaved={handleMergeWorkspaceSaved}
         />
       )}
 
@@ -1072,16 +1127,35 @@ export function ScenarioCreatePage() {
             return;
           }
 
-          void customMethodImport.refresh(parsedPayload).catch(
-            (error: unknown) => {
+          void customMethodImport
+            .refresh(parsedPayload)
+            .then((nextCustomMethodResolutions) => {
+              const nextPayload =
+                addMissingCustomMethodVariables(
+                  parsedPayload,
+                  nextCustomMethodResolutions,
+                );
+
+              setParsedPayload(nextPayload);
+
+              variableImport.setResolutions(
+                (currentResolutions) =>
+                  variableImport.rebuildResolutions(
+                    nextPayload,
+                    backendImport.state.resolutions,
+                    platformVariables,
+                    currentResolutions,
+                  ),
+              );
+            })
+            .catch((error: unknown) => {
               message.error(
                 getApiErrorMessage(
                   error,
                   'Не удалось обновить список сценариев',
                 ),
               );
-            },
-          );
+            });
         }}
       />
     </main>

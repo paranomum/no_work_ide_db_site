@@ -1,4 +1,14 @@
 :root {
+  --merge-diff-changed-background: #fffbe6;
+  --merge-diff-changed-border: #faad14;
+  --merge-diff-changed-text: #874d00;
+
+  /*
+   * Поле есть только в импортируемом методе.
+   */
+  --merge-diff-added-background: #f6ffed;
+  --merge-diff-added-border: #52c41a;
+  --merge-diff-added-text: #237804;
   /*
    * Семантические цвета различий.
    * Эти переменные можно повторно применять в таблицах,
@@ -81,4 +91,50 @@
 
 .backendDiffRowOnlyRight:hover > td {
   background: var(--diff-only-right-background) !important;
+}
+
+.backendMergeLineChanged {
+  display: block;
+  margin: 0 -4px;
+  padding: 0 4px;
+  color: var(--merge-diff-changed-text);
+  background: var(--merge-diff-changed-background);
+  box-shadow: inset 3px 0 0 var(--merge-diff-changed-border);
+}
+
+.backendMergeLineAdded {
+  display: block;
+  margin: 0 -4px;
+  padding: 0 4px;
+  color: var(--merge-diff-added-text);
+  background: var(--merge-diff-added-background);
+  box-shadow: inset 3px 0 0 var(--merge-diff-added-border);
+}
+
+.backendMergeFieldChanged {
+  padding: 8px;
+  border-left: 3px solid var(--merge-diff-changed-border);
+  border-radius: 6px;
+  background: var(--merge-diff-changed-background);
+}
+
+.backendMergeFieldAdded {
+  padding: 8px;
+  border-left: 3px solid var(--merge-diff-added-border);
+  border-radius: 6px;
+  background: var(--merge-diff-added-background);
+}
+
+.backendMergeFieldChanged .ant-input,
+.backendMergeFieldChanged textarea.ant-input {
+  color: var(--merge-diff-changed-text);
+  background: var(--merge-diff-changed-background);
+  border-color: var(--merge-diff-changed-border);
+}
+
+.backendMergeFieldAdded .ant-input,
+.backendMergeFieldAdded textarea.ant-input {
+  color: var(--merge-diff-added-text);
+  background: var(--merge-diff-added-background);
+  border-color: var(--merge-diff-added-border);
 }

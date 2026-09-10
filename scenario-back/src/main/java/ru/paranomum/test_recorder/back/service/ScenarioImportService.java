@@ -1,10 +1,10 @@
 package ru.paranomum.test_recorder.back.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +53,7 @@ public class ScenarioImportService {
 	private static final String DEFAULT_HEADERS_JSON = "{}";
 	private static final String DEFAULT_ARRAY_JSON = "[]";
 
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 	private final BackendRequestService backendRequestService;
 	private final BackendRequestRepository backendRequestRepository;
 	private final ScenarioRepository scenarioRepository;
@@ -628,8 +628,7 @@ public class ScenarioImportService {
 		}
 
 		ObjectNode object = (ObjectNode) node;
-		List<String> fields = new ArrayList<>();
-		object.fieldNames().forEachRemaining(fields::add);
+		List<String> fields = new ArrayList<>(object.propertyNames());
 
 		for (String field : fields) {
 			JsonNode value = object.get(field);
@@ -683,7 +682,7 @@ public class ScenarioImportService {
 			}
 		}
 
-		object.elements().forEachRemaining(
+		object.values().forEach(
 				item -> replaceResponseExtractorVariableNames(
 						item,
 						replacements
@@ -815,7 +814,7 @@ public class ScenarioImportService {
 			}
 		}
 
-		object.elements().forEachRemaining(
+		object.values().forEach(
 				item -> replaceCustomMethodActions(item, replacements)
 		);
 	}
@@ -1024,10 +1023,10 @@ public class ScenarioImportService {
 
 		try {
 			return objectMapper.readTree(value);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			try {
 				return objectMapper.readTree(fallback);
-			} catch (JsonProcessingException fallbackException) {
+			} catch (JacksonException fallbackException) {
 				throw new IllegalStateException(
 						"Не удалось разобрать JSON",
 						fallbackException
@@ -1039,7 +1038,7 @@ public class ScenarioImportService {
 	private String serializeJson(JsonNode node) {
 		try {
 			return objectMapper.writeValueAsString(node);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalArgumentException(
 					"Не удалось сериализовать JSON",
 					exception
@@ -1092,8 +1091,7 @@ public class ScenarioImportService {
 			ObjectNode object,
 			String targetName
 	) {
-		List<String> fieldNames = new ArrayList<>();
-		object.fieldNames().forEachRemaining(fieldNames::add);
+		List<String> fieldNames = new ArrayList<>(object.propertyNames());
 
 		return fieldNames.stream()
 				.filter(name -> name.equalsIgnoreCase(targetName))

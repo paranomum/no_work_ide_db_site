@@ -1,10 +1,10 @@
 package ru.paranomum.test_recorder.back.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -39,7 +39,7 @@ import java.util.List;
 public class ScenarioService {
 
 	private final ScenarioRepository scenarioRepository;
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 
 	private final ScenarioTagRepository scenarioTagRepository;
 	private final ScenarioVariableRepository scenarioVariableRepository;
@@ -65,7 +65,7 @@ public class ScenarioService {
 			ScenarioCustomMethodRepository scenarioCustomMethodRepository,
 			UserVariableRepository userVariableRepository,
 			BackendRequestExportMapper backendRequestExportMapper,
-			ObjectMapper objectMapper
+			JsonMapper objectMapper
 	) {
 		this.scenarioRepository = scenarioRepository;
 		this.scenarioTagRepository = scenarioTagRepository;
@@ -625,7 +625,7 @@ public class ScenarioService {
 			 * Пока просто сохраняем то, что пришло.
 			 */
 			return objectMapper.writeValueAsString(root);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new ScenarioJsonInvalidException();
 		}
 	}
@@ -668,7 +668,7 @@ public class ScenarioService {
 			}
 
 			return (ObjectNode) root;
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Сценарий содержит невалидный JSON payload",
 					exception
@@ -774,7 +774,7 @@ public class ScenarioService {
 		try {
 			return objectMapper.writerWithDefaultPrettyPrinter()
 					.writeValueAsString(root);
-		} catch (JsonProcessingException exception) {
+		} catch (JacksonException exception) {
 			throw new IllegalStateException(
 					"Не удалось сериализовать сценарий",
 					exception

@@ -28,6 +28,12 @@
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/ScenarioVariableRequest.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/ScenarioVariableResponse.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/ScenarioVariablesRequest.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/imports/ScenarioImportBackendResolutionRequest.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/imports/ScenarioImportCustomMethodResolutionRequest.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/imports/ScenarioImportRequest.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/imports/ScenarioImportValuesRequest.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/imports/ScenarioImportVariableRequest.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/scenarios/imports/ScenarioImportVariableResolutionRequest.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/tags/TagRequest.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/tags/TagResponse.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/dto/users/LoginRequest.java
@@ -85,6 +91,7 @@
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/BackendRequestExportMapper.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/BackendRequestService.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/ScenarioExportService.java
+/Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/ScenarioImportService.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/ScenarioService.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/TagService.java
 /Users/admin/Desktop/work_proj/no_work_ide_db_site/scenario-back/src/main/java/ru/paranomum/test_recorder/back/service/UserService.java

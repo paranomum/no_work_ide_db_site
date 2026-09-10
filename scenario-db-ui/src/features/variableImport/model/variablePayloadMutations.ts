@@ -16,12 +16,24 @@ function normalizeVariableName(value: string): string {
   return value.trim().toLocaleLowerCase('ru-RU');
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function replaceVariableExpression(
   value: string,
   from: string,
   to: string,
 ): string {
-  return value.replaceAll(`\${${from}}`, `\${${to}}`);
+  const expressionPattern = new RegExp(
+    `\\$\\{\\s*${escapeRegExp(from)}\\s*\\}`,
+    'g',
+  );
+
+  return value.replace(
+    expressionPattern,
+    `\${${to}}`,
+  );
 }
 
 function replaceInNode(
@@ -89,6 +101,30 @@ export function removePayloadVariable(
     variables: variables.filter(
       (item) => !isRecord(item) || item.name !== variableName,
     ),
+  };
+}
+
+export function renamePayloadVariable(
+  payload: JsonRecord,
+  currentVariableName: string,
+  nextVariableName: string,
+): JsonRecord {
+  const variables = Array.isArray(payload.variables)
+    ? payload.variables
+    : [];
+
+  return {
+    ...payload,
+    variables: variables.map((item) => {
+      if (!isRecord(item) || item.name !== currentVariableName) {
+        return item;
+      }
+
+      return {
+        ...item,
+        name: nextVariableName,
+      };
+    }),
   };
 }
 
