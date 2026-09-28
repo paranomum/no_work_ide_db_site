@@ -11,7 +11,7 @@ services:
     volumes:
       - ./data:/data
     expose:
-      - "8080"
+      - "6667"
     restart: unless-stopped
 
   test-recorder-frontend:
@@ -19,7 +19,7 @@ services:
       context: ./scenario-db-ui
       dockerfile: Dockerfile
     ports:
-      - "5174:80"
+      - "8088:80"
     depends_on:
       - test-recorder-backend
     restart: unless-stopped

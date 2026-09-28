@@ -1,0 +1,9 @@
+<qa:browsers xmlns:qa="urn:config.gridrouter.qatools.ru">
+    <browser name="chrome" defaultVersion="128.0">
+        <version number="128.0">
+            <region name="local">
+                <host name="selenoid" port="4444" count="2" vnc="ws://selenoid:4444/vnc"/>
+            </region>
+        </version>
+    </browser>
+</qa:browsers>

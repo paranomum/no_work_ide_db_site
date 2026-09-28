@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 6667
   servlet:
     session:
       timeout: 3h
@@ -10,7 +10,7 @@ server:
 
 
 selenoid:
-  ggr-ui-url: http://10.28.110.193:8888
+  ggr-ui-url: http://host.docker.internal:8888
   username: iqhr_qa
   password: ${GGR_PASSWORD:}
 

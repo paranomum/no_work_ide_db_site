@@ -1,13 +1,14 @@
 package ru.paranomum.test_recorder.back.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import ru.paranomum.test_recorder.back.dto.selenoid_session.SelenoidSessionResponse;
 import ru.paranomum.test_recorder.back.exception.SelenoidUnavailableException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,14 +26,14 @@ import java.util.Map;
 @Service
 public class SelenoidSessionService {
 
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 	private final HttpClient httpClient;
 	private final URI statusUri;
 	private final String username;
 	private final String password;
 
 	public SelenoidSessionService(
-			ObjectMapper objectMapper,
+			JsonMapper objectMapper,
 			@Value("${selenoid.ggr-ui-url}") String ggrUiUrl,
 			@Value("${selenoid.username}") String username,
 			@Value("${selenoid.password:}") String password
@@ -91,7 +92,7 @@ public class SelenoidSessionService {
 		JsonNode root;
 		try {
 			root = objectMapper.readTree(response.body());
-		} catch (IOException e) {
+		} catch (JacksonException e) {
 			throw new SelenoidUnavailableException(
 					"Ggr UI вернул некорректный JSON", e
 			);
@@ -108,21 +109,21 @@ public class SelenoidSessionService {
 		JsonNode browsers = root.path("browsers");
 
 		if (browsers.isObject()) {
-			Iterator<Map.Entry<String, JsonNode>> browserEntries = browsers.fields();
+			Iterator<Map.Entry<String, JsonNode>> browserEntries = browsers.properties().iterator();
 
 			while (browserEntries.hasNext()) {
 				Map.Entry<String, JsonNode> browserEntry = browserEntries.next();
 				String browserName = browserEntry.getKey();
 
 				Iterator<Map.Entry<String, JsonNode>> versionEntries =
-						browserEntry.getValue().fields();
+						browserEntry.getValue().properties().iterator();
 
 				while (versionEntries.hasNext()) {
 					Map.Entry<String, JsonNode> versionEntry = versionEntries.next();
 					String version = versionEntry.getKey();
 
 					Iterator<Map.Entry<String, JsonNode>> userEntries =
-							versionEntry.getValue().fields();
+							versionEntry.getValue().properties().iterator();
 
 					while (userEntries.hasNext()) {
 						Map.Entry<String, JsonNode> userEntry = userEntries.next();

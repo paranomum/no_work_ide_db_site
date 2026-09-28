@@ -7,6 +7,8 @@ import { ScenarioCreatePage } from '../pages/ScenarioCreatePage/ScenarioCreatePa
 import { ScenarioListPage } from '../pages/ScenarioListPage/ScenarioListPage';
 import { ScenarioPage } from '../pages/ScenarioPage/ScenarioPage';
 import { PrivateLayout } from './PrivateLayout';
+import { SelenoidSessionsListPage } from '../pages/SelenoidSessionsListPage/SelenoidSessionsListPage';
+import { SelenoidSessionVNC } from '../pages/SelenoidSessionVNC/SelenoidSessionVNC';
 
 export default function App() {
   return (
@@ -21,6 +23,16 @@ export default function App() {
         <Route
           path="/scenarios/:scenarioId"
           element={<ScenarioPage />}
+        />
+
+        <Route
+          path="/selenoid/sessions/:sessionId"
+          element={<SelenoidSessionVNC />}
+        />
+
+        <Route
+          path="/selenoid/sessions"
+          element={<SelenoidSessionsListPage />}
         />
         <Route path="/scenarios" element={<ScenarioListPage />} />
         <Route path="/profile" element={<ProfilePage />} />

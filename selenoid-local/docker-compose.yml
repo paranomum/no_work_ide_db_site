@@ -1,0 +1,60 @@
+name: selenoid-local
+
+services:
+  ggr:
+    image: aerokube/ggr:latest-release
+    platform: linux/amd64
+    command: ["-quotaDir", "/etc/grid-router/quota", "-guests-allowed", "-guests-quota", "guest", "-verbose"]
+    ports:
+      - "127.0.0.1:4444:4444"
+    volumes:
+      - ./grid-router/quota:/etc/grid-router/quota:ro
+    networks:
+      - app_net
+      - browser_net
+    depends_on:
+      - selenoid
+
+  ggr-ui:
+    image: aerokube/ggr-ui:latest-release
+    platform: linux/amd64
+    command: ["-quota-dir", "/etc/grid-router/quota", "-guests-allowed", "-guests-quota", "guest"]
+    ports:
+      - "127.0.0.1:8888:8888"
+    volumes:
+      - ./grid-router/quota:/etc/grid-router/quota:ro
+    networks:
+      - app_net
+      - browser_net
+    depends_on:
+      - selenoid
+
+  selenoid-ui:
+    image: aerokube/selenoid-ui:latest-release
+    platform: linux/amd64
+    command: ["--webdriver-uri", "http://ggr:4444", "--status-uri", "http://ggr-ui:8888"]
+    ports:
+      - "127.0.0.1:8090:8080"
+    networks:
+      - app_net
+    depends_on:
+      - ggr
+      - ggr-ui
+
+  selenoid:
+    image: aerokube/selenoid:latest-release
+    platform: linux/amd64
+    command: ["-conf", "/etc/selenoid/browsers.json", "-limit", "2", "-container-network", "selenoid-local-browser"]
+    ports:
+      - "127.0.0.1:4445:4444"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./selenoid/browsers.json:/etc/selenoid/browsers.json:ro
+    networks:
+      - browser_net
+
+networks:
+  app_net:
+    name: selenoid-local-app
+  browser_net:
+    name: selenoid-local-browser

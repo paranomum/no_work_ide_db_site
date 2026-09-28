@@ -1,5 +1,6 @@
 import {
   DatabaseOutlined,
+  DesktopOutlined,
   LogoutOutlined,
   UserOutlined,
   SettingOutlined,
@@ -67,6 +68,16 @@ export function AppHeader() {
           База сценариев
         </Typography.Text>
       </button>
+
+      <Button
+        type="text"
+        size="large"
+        className={styles.actionButton}
+        icon={<DesktopOutlined />}
+        onClick={() => navigate('/selenoid/sessions')}
+      >
+        Selenoid
+      </Button>
 
       <Space size={4}>
         <Tooltip title="Администрирование">

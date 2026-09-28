@@ -31,6 +31,12 @@
   font-weight: 600;
 }
 
+.navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .actionButton {
   color: #4b5563 !important;
 }

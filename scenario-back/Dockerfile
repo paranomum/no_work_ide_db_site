@@ -14,6 +14,6 @@ WORKDIR /app
 
 COPY --from=build /build/target/*.jar app.jar
 
-EXPOSE 8080
+EXPOSE 6667
 
 ENTRYPOINT ["/bin/sh", "-c", "mkdir -p /data && java -jar /app/app.jar"]
