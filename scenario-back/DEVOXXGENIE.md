@@ -1,5 +1,14 @@
 # Project Guidelines
 
+## Project root boundary
+
+- Treat the IntelliJ project root containing this `DEVOXXGENIE.md` and `pom.xml` as the only repository root.
+- Do not inspect, reference, index, edit, create, delete, or execute files outside this project root.
+- Do not search parent directories, sibling repositories, the user home directory, temporary directories, IDE directories, or unrelated workspace folders.
+- If a required file is not inside the current project root, stop and report it as unavailable.
+- Never infer project facts from files outside the current project root.
+- Before any multi-file task, verify that both `pom.xml` and `DEVOXXGENIE.md` are available in the current project root.
+
 ## Project purpose
 
 This repository contains the backend for a test recorder application.

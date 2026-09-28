@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import ru.paranomum.test_recorder.back.exception.SelenoidUnavailableException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -54,6 +55,17 @@ public class GlobalExceptionHandler {
 				HttpStatus.BAD_REQUEST,
 				"Ошибка валидации запроса",
 				fieldErrors
+		);
+	}
+
+	@ExceptionHandler(SelenoidUnavailableException.class)
+	public ResponseEntity<ApiError> handleSelenoidUnavailable(
+			SelenoidUnavailableException exception
+	) {
+		return buildResponse(
+				HttpStatus.BAD_GATEWAY,
+				exception.getMessage(),
+				Map.of()
 		);
 	}
 

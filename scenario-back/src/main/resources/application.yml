@@ -8,6 +8,12 @@ server:
         secure: ${SESSION_COOKIE_SECURE:false}
         same-site: strict
 
+
+selenoid:
+  ggr-ui-url: http://10.28.110.193:8888
+  username: iqhr_qa
+  password: ${GGR_PASSWORD:}
+
 spring:
   application:
     name: test-recorder-back
